@@ -1,0 +1,18 @@
+# RStudio
+.Rproj.user/
+.Rhistory
+.RData
+
+# Daten (oft groß)
+data/
+*.csv
+*.rds
+*.RDS
+
+# Output
+*.html
+*.pdf
+*.png
+
+# Sonstiges
+.DS_Store
