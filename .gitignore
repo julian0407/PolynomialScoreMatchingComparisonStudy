@@ -19,6 +19,8 @@ data/
 ./.git/objects/66/b33a604fe447342f2a2685d44aee2d5b77674e
 ./.git/objects/e5/7224d916f207f5e5cbca130c066335672fe03b
 ./.git/objects/c6/206853f6d631990b0cc66a4239bbdb79891f70
-./.RDataTmp4
-./.RDataTmp3
-./.RDataTmp2
+.RDataTmp4
+.RDataTmp3
+.RDataTmp2
+.RDataTmp1
+.RDataTmp
