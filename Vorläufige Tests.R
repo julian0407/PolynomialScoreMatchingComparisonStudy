@@ -8,6 +8,8 @@ source("helper_functions.R")
 source("KDE.R")
 source("LogConcaveMLE.R")
 source("Univariate_Polynomial_Score_Matching_1.0.R")   # only if method = "SM"
+source("Multivariate_Pairwise_Polynomial_Score_Matching.R")
+
 #
 # Score convention:
 #   This script assumes ALL estimator score functions return
@@ -278,10 +280,6 @@ run_score_loss_benchmark <- function(sample_sizes,
     stop("sample_sizes must contain at least one integer >= 2.")
   }
   
-  if (family == "multivariate" && method == "SM") {
-    stop("Multivariate SM is not implemented yet.")
-  }
-  
   out_list <- vector("list", length(sample_sizes) * n_rep)
   counter <- 1L
   
@@ -502,7 +500,7 @@ plot_score_loss_benchmark(res_mle_1d)
 # Example 3: univariate SM
 #
 res_sm_1d <- run_score_loss_benchmark(
-  sample_sizes = c(50, 100, 200, 500, 1000, 10000),
+  sample_sizes = c(500, 1000, 10000),
   family = "univariate",
   method = "SM",
   r_sample = r_sample_norm_1d,
@@ -540,7 +538,7 @@ res_kde_2d <- run_score_loss_benchmark(
 
 plot_score_loss_benchmark(res_kde_2d)
 
-# Example 4: multivariate Gaussian, MLE
+# Example 5: multivariate Gaussian, MLE
 
 res_mle_2d <- run_score_loss_benchmark(
   sample_sizes = c(100, 200, 500, 1000),
@@ -555,9 +553,53 @@ res_mle_2d <- run_score_loss_benchmark(
 )
 
 plot_score_loss_benchmark(res_mle_2d)
+
+# Example 6: multivariate Gaussian, SM
+
+res_sm_2d <- run_score_loss_benchmark(
+  sample_sizes = c(100, 200, 500, 1000, 10000),
+  family = "multivariate",
+  method = "SM",
+  r_sample = r_sample_norm_2d,
+  true_score = true_score_norm_2d,
+  n_rep = 20,
+  n_test = 2000,
+  seed = 123,
+  fit_args = list(
+    m = 2,
+    include_interactions = TRUE,
+    standardize = TRUE,
+    ridge = 1e-6
+  )
+)
+
+plot_score_loss_benchmark(res_sm_2d)
+
+
+res_sm_2d <- run_score_loss_benchmark(
+  sample_sizes = c(100, 200, 500, 1000, 10000),
+  family = "multivariate",
+  method = "SM",
+  r_sample = r_sample_norm_2d,
+  true_score = true_score_norm_2d,
+  n_rep = 20,
+  n_test = 2000,
+  seed = 123,
+  fit_args = list(
+    m = 3,
+    log_concave = TRUE,
+    lc_method = "grid",
+    lc_grid_size = 5,
+    lc_max_points = 300,
+    lc_penalty = 1e4
+  )
+)
+
+plot_score_loss_benchmark(res_sm_2d)
+
 #
 #
-# Example 6: compare several methods in one panel
+# Example 7: compare several methods in one panel
 #
 # plot_score_loss_panel(
 #   list(
@@ -566,3 +608,84 @@ plot_score_loss_benchmark(res_mle_2d)
 #     "SM 1D"  = res_sm_1d
 #   )
 # )
+
+
+# Baseline: multivariate Gaussian, SM (new polynomial SM approach, no grid)
+res_sm_2d_basic <- run_score_loss_benchmark(
+  sample_sizes = c(100, 200, 500, 1000),
+  family = "multivariate",
+  method = "SM",
+  r_sample = r_sample_norm_2d,
+  true_score = true_score_norm_2d,
+  n_rep = 20,
+  n_test = 2000,
+  seed = 123,
+  fit_args = list(
+    m = 3,
+    include_interactions = TRUE,
+    standardize = TRUE,
+    ridge = 1e-6,
+    log_concave = "off"
+  )
+)
+
+plot_score_loss_benchmark(
+  res_sm_2d_basic,
+  main = "SM polynomial (neu) - ohne Grid"
+)
+
+# New polynomial SM approach with grid-based log-concavity penalty
+res_sm_2d_grid <- run_score_loss_benchmark(
+  sample_sizes = c(100, 200, 500, 1000),
+  family = "multivariate",
+  method = "SM",
+  r_sample = r_sample_norm_2d,
+  true_score = true_score_norm_2d,
+  n_rep = 20,
+  n_test = 2000,
+  seed = 123,
+  fit_args = list(
+    m = 3,
+    include_interactions = TRUE,
+    standardize = TRUE,
+    ridge = 1e-6,
+    log_concave = "grid",
+    lc_grid_size = 5,
+    lc_max_points = 300,
+    lc_penalty = 1e4,
+    lc_tol = 1e-8
+  )
+)
+
+plot_score_loss_benchmark(
+  res_sm_2d_grid,
+  main = "SM polynomial (neu) - mit Grid"
+)
+
+# New polynomial SM approach with m=2
+res_sm_2d_grid <- run_score_loss_benchmark(
+  sample_sizes = c(100, 200, 500, 1000),
+  family = "multivariate",
+  method = "SM",
+  r_sample = r_sample_norm_2d,
+  true_score = true_score_norm_2d,
+  n_rep = 20,
+  n_test = 2000,
+  seed = 123,
+  fit_args = list(
+    m = 2,
+    include_interactions = TRUE,
+    standardize = TRUE,
+    ridge = 1e-6,
+    log_concave = "m2",
+    lc_grid_size = 5,
+    lc_max_points = 300,
+    lc_penalty = 1e4,
+    lc_tol = 1e-8
+  )
+)
+
+plot_score_loss_benchmark(
+  res_sm_2d_grid,
+  main = "SM polynomial (neu) - mit m=2"
+)
