@@ -198,3 +198,263 @@ predict_score_univariate <- function(x, fit) {
   score_z / fit$scaling$scale
 }
 
+
+# ------------------------------------------------------------
+# (4) Stop: New Code to check!!!
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# (3.2) Reconstruct univariate density from the fitted score
+# ------------------------------------------------------------
+# Theory:
+#   r(z) = - d/dz log f_Z(z)
+# implies
+#   log f_Z(z) = C - integral r(u) du.
+# We reconstruct an unnormalized log-density in the standardized
+# variable z, estimate the log-normalizing constant numerically,
+# and then map back to the original x-scale via
+#   f_X(x) = f_Z((x-mu)/s) / s.
+
+# Extract polynomial coefficients a_0, ..., a_{2m-1} of the score
+# r(z) = a_0 + a_1 z + ... + a_{2m-1} z^{2m-1}.
+get_score_polynomial_coefficients_univariate <- function(fit) {
+  m <- fit$m
+  G <- fit$G
+  coeffs <- numeric(2L * m)
+  coeffs[1L] <- fit$c1
+  
+  for (i in seq_len(m)) {
+    for (j in seq_len(m)) {
+      deg <- i + j - 1L
+      coeffs[deg + 1L] <- coeffs[deg + 1L] + G[i, j] / deg
+    }
+  }
+  coeffs
+}
+
+# Evaluate the antiderivative A(z) = integral_0^z r(u) du.
+# Then log f(z) = -A(z) up to an additive constant.
+predict_antiderivative_score_z_univariate <- function(z, fit) {
+  z <- as.numeric(z)
+  coeffs <- get_score_polynomial_coefficients_univariate(fit)
+  degs <- 0:(length(coeffs) - 1L)
+  out <- numeric(length(z))
+  for (k in seq_along(coeffs)) {
+    out <- out + coeffs[k] * z^(degs[k] + 1L) / (degs[k] + 1L)
+  }
+  out
+}
+
+# Unnormalized log-density on standardized z-scale.
+predict_logdensity_unnormalized_z_univariate <- function(z, fit) {
+  -predict_antiderivative_score_z_univariate(z, fit)
+}
+
+# Helper to build a reasonable finite search interval around the
+# standardized training sample.
+get_default_density_bounds_z_univariate <- function(fit,
+                                                    n_sd = 8,
+                                                    min_half_width = 8) {
+  z_train <- as.numeric(fit$z_train)
+  if (length(z_train) == 0L || any(!is.finite(z_train))) {
+    return(c(-min_half_width, min_half_width))
+  }
+  mu <- mean(z_train)
+  s  <- stats::sd(z_train)
+  if (!is.finite(s) || s <= 0) s <- 1
+  lo <- min(min(z_train), mu - n_sd * s, -min_half_width)
+  hi <- max(max(z_train), mu + n_sd * s,  min_half_width)
+  c(lo, hi)
+}
+
+# Approximate mode on z-scale to stabilize numerical integration.
+find_mode_logdensity_z_univariate <- function(fit,
+                                              interval = NULL,
+                                              grid_length = 2001L) {
+  if (is.null(interval)) {
+    interval <- get_default_density_bounds_z_univariate(fit)
+  }
+  interval <- as.numeric(interval)
+  if (length(interval) != 2L || !all(is.finite(interval)) || interval[1L] >= interval[2L]) {
+    stop("interval must be a finite vector (lower, upper) with lower < upper.")
+  }
+  
+  f_log <- function(z) predict_logdensity_unnormalized_z_univariate(z, fit)
+  grid <- seq(interval[1L], interval[2L], length.out = grid_length)
+  vals <- f_log(grid)
+  idx <- which.max(vals)
+  z0 <- grid[idx]
+  
+  # refine locally if possible
+  left  <- if (idx <= 1L) interval[1L] else grid[idx - 1L]
+  right <- if (idx >= length(grid)) interval[2L] else grid[idx + 1L]
+  opt <- tryCatch(
+    optimize(function(z) -f_log(z), interval = c(left, right), maximum = FALSE),
+    error = function(e) NULL
+  )
+  if (!is.null(opt)) {
+    z0 <- opt$minimum
+  }
+  list(mode = z0, logvalue = f_log(z0), interval = interval)
+}
+
+# Numerically compute log Z_z where
+#   Z_z = integral exp(log f_Z(z)) dz.
+# A shift by the approximate mode is used for stability.
+compute_log_normalizer_z_univariate <- function(fit,
+                                                interval = NULL,
+                                                subdivisions = 200L,
+                                                rel.tol = 1e-8,
+                                                abs.tol = 0,
+                                                stop_on_failure = FALSE) {
+  if (is.null(interval)) {
+    interval <- get_default_density_bounds_z_univariate(fit)
+  }
+  mode_info <- find_mode_logdensity_z_univariate(fit, interval = interval)
+  shift <- mode_info$logvalue
+  
+  integrand <- function(z) {
+    val <- predict_logdensity_unnormalized_z_univariate(z, fit) - shift
+    exp(val)
+  }
+  
+  integ <- tryCatch(
+    stats::integrate(
+      f = integrand,
+      lower = -Inf,
+      upper = Inf,
+      subdivisions = subdivisions,
+      rel.tol = rel.tol,
+      abs.tol = abs.tol,
+      stop.on.error = stop_on_failure
+    ),
+    error = function(e) e
+  )
+  
+  if (inherits(integ, "error") || !is.list(integ) || !is.finite(integ$value) || integ$value <= 0) {
+    msg <- paste(
+      "Failed to compute a finite normalizing constant for the reconstructed density.",
+      "This can happen if the fitted score does not induce an integrable log-density.")
+    if (isTRUE(stop_on_failure)) stop(msg)
+    return(list(logZ = NA_real_, value = NA_real_, shift = shift, message = msg,
+                mode = mode_info$mode, interval = interval))
+  }
+  
+  list(
+    logZ = as.numeric(log(integ$value) + shift),
+    value = as.numeric(integ$value * exp(shift)),
+    shift = shift,
+    abs.error = integ$abs.error,
+    subdivisions = subdivisions,
+    mode = mode_info$mode,
+    interval = interval,
+    message = if (!is.null(integ$message)) integ$message else NULL
+  )
+}
+
+# Normalized log-density on standardized z-scale.
+predict_logdensity_z_univariate <- function(z,
+                                            fit,
+                                            eps = 1e-300,
+                                            interval = NULL,
+                                            subdivisions = 200L,
+                                            rel.tol = 1e-8,
+                                            abs.tol = 0,
+                                            stop_on_failure = FALSE) {
+  z <- as.numeric(z)
+  z <- z[is.finite(z)]
+  
+  log_unnorm <- predict_logdensity_unnormalized_z_univariate(z, fit)
+  norm_info <- compute_log_normalizer_z_univariate(
+    fit = fit,
+    interval = interval,
+    subdivisions = subdivisions,
+    rel.tol = rel.tol,
+    abs.tol = abs.tol,
+    stop_on_failure = stop_on_failure
+  )
+  
+  if (!is.finite(norm_info$logZ)) {
+    out <- rep(NA_real_, length(z))
+    return(out)
+  }
+  
+  log_unnorm - norm_info$logZ
+}
+
+predict_density_z_univariate <- function(z,
+                                         fit,
+                                         interval = NULL,
+                                         subdivisions = 200L,
+                                         rel.tol = 1e-8,
+                                         abs.tol = 0,
+                                         stop_on_failure = FALSE) {
+  logdens <- predict_logdensity_z_univariate(
+    z = z,
+    fit = fit,
+    interval = interval,
+    subdivisions = subdivisions,
+    rel.tol = rel.tol,
+    abs.tol = abs.tol,
+    stop_on_failure = stop_on_failure
+  )
+  exp(logdens)
+}
+
+# Normalized log-density on original x-scale.
+predict_logdensity_univariate <- function(x,
+                                          fit,
+                                          eps = 1e-300,
+                                          interval = NULL,
+                                          subdivisions = 200L,
+                                          rel.tol = 1e-8,
+                                          abs.tol = 0,
+                                          stop_on_failure = FALSE) {
+  x <- as.numeric(x)
+  x <- x[is.finite(x)]
+  
+  z <- apply_scaling_1d(x, fit$scaling)$z
+  logdens_z <- predict_logdensity_z_univariate(
+    z = z,
+    fit = fit,
+    eps = eps,
+    interval = interval,
+    subdivisions = subdivisions,
+    rel.tol = rel.tol,
+    abs.tol = abs.tol,
+    stop_on_failure = stop_on_failure
+  )
+  
+  ifelse(is.finite(logdens_z), logdens_z - log(fit$scaling$scale), NA_real_)
+}
+
+predict_density_univariate <- function(x,
+                                       fit,
+                                       interval = NULL,
+                                       subdivisions = 200L,
+                                       rel.tol = 1e-8,
+                                       abs.tol = 0,
+                                       stop_on_failure = FALSE) {
+  logdens_x <- predict_logdensity_univariate(
+    x = x,
+    fit = fit,
+    interval = interval,
+    subdivisions = subdivisions,
+    rel.tol = rel.tol,
+    abs.tol = abs.tol,
+    stop_on_failure = stop_on_failure
+  )
+  exp(logdens_x)
+}
+
+# Aliases aligned with the naming convention in the KDE / MLE scripts.
+predict_logdensity_sm_1d <- function(newx, fit, ...) {
+  predict_logdensity_univariate(newx, fit, ...)
+}
+
+predict_density_sm_1d <- function(newx, fit, ...) {
+  predict_density_univariate(newx, fit, ...)
+}
+
+
+

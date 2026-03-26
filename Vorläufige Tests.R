@@ -554,65 +554,11 @@ res_mle_2d <- run_score_loss_benchmark(
 
 plot_score_loss_benchmark(res_mle_2d)
 
+
 # Example 6: multivariate Gaussian, SM
-
-res_sm_2d <- run_score_loss_benchmark(
-  sample_sizes = c(100, 200, 500, 1000, 10000),
-  family = "multivariate",
-  method = "SM",
-  r_sample = r_sample_norm_2d,
-  true_score = true_score_norm_2d,
-  n_rep = 20,
-  n_test = 2000,
-  seed = 123,
-  fit_args = list(
-    m = 2,
-    include_interactions = TRUE,
-    standardize = TRUE,
-    ridge = 1e-6
-  )
-)
-
-plot_score_loss_benchmark(res_sm_2d)
-
-
-res_sm_2d <- run_score_loss_benchmark(
-  sample_sizes = c(100, 200, 500, 1000, 10000),
-  family = "multivariate",
-  method = "SM",
-  r_sample = r_sample_norm_2d,
-  true_score = true_score_norm_2d,
-  n_rep = 20,
-  n_test = 2000,
-  seed = 123,
-  fit_args = list(
-    m = 3,
-    log_concave = TRUE,
-    lc_method = "grid",
-    lc_grid_size = 5,
-    lc_max_points = 300,
-    lc_penalty = 1e4
-  )
-)
-
-plot_score_loss_benchmark(res_sm_2d)
-
-#
-#
-# Example 7: compare several methods in one panel
-#
-# plot_score_loss_panel(
-#   list(
-#     "KDE 1D" = res_kde_1d,
-#     "MLE 1D" = res_mle_1d,
-#     "SM 1D"  = res_sm_1d
-#   )
-# )
-
-
 # Baseline: multivariate Gaussian, SM (new polynomial SM approach, no grid)
 res_sm_2d_basic <- run_score_loss_benchmark(
-  sample_sizes = c(100, 200, 500, 1000),
+  sample_sizes = c(100, 200, 500, 1000, 10000),
   family = "multivariate",
   method = "SM",
   r_sample = r_sample_norm_2d,
@@ -636,7 +582,7 @@ plot_score_loss_benchmark(
 
 # New polynomial SM approach with grid-based log-concavity penalty
 res_sm_2d_grid <- run_score_loss_benchmark(
-  sample_sizes = c(100, 200, 500, 1000),
+  sample_sizes = c(100, 200, 500, 1000, 10000),
   family = "multivariate",
   method = "SM",
   r_sample = r_sample_norm_2d,
@@ -662,9 +608,9 @@ plot_score_loss_benchmark(
   main = "SM polynomial (neu) - mit Grid"
 )
 
-# New polynomial SM approach with m=2
-res_sm_2d_grid <- run_score_loss_benchmark(
-  sample_sizes = c(100, 200, 500, 1000),
+# New polynomial SM approach with complete log-concavity (quadratic / m2 projection)
+res_sm_2d_logconcave_full <- run_score_loss_benchmark(
+  sample_sizes = c(100, 200, 500, 1000, 10000),
   family = "multivariate",
   method = "SM",
   r_sample = r_sample_norm_2d,
@@ -678,14 +624,36 @@ res_sm_2d_grid <- run_score_loss_benchmark(
     standardize = TRUE,
     ridge = 1e-6,
     log_concave = "m2",
-    lc_grid_size = 5,
-    lc_max_points = 300,
-    lc_penalty = 1e4,
-    lc_tol = 1e-8
+    lc_m2_eps = 1e-8
   )
 )
 
 plot_score_loss_benchmark(
-  res_sm_2d_grid,
-  main = "SM polynomial (neu) - mit m=2"
+  res_sm_2d_logconcave_full,
+  main = "SM polynomial (neu) - komplett log-concave"
 )
+
+# # Optional comparison panel for the three preliminary tests
+# plot_score_loss_panel(
+#   list(
+#     "SM neu - ohne Grid" = res_sm_2d_basic,
+#     "SM neu - mit Grid" = res_sm_2d_grid,
+#     "SM neu - komplett log-concave" = res_sm_2d_logconcave_full
+#   ),
+#   nrow = 1,
+#   ncol = 3
+# )
+
+
+
+#
+#
+# Example 7: compare several methods in one panel
+#
+# plot_score_loss_panel(
+#   list(
+#     "KDE 1D" = res_kde_1d,
+#     "MLE 1D" = res_mle_1d,
+#     "SM 1D"  = res_sm_1d
+#   )
+# )

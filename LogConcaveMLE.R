@@ -95,11 +95,11 @@ predict_density_logconcave_1d <- function(newx,
   # if smoothed=True apply smoothed estimate from package
   # logcondens
   ans <- logcondens::evaluateLogConDens(
-    x = newx,
-    object = fit_MLE,
-    which = "smoothed"
+    xs = newx,
+    res = fit_MLE,
+    which = 4
   )
-  return(as.numeric(ans$y))
+  return(as.numeric(ans[, "smooth.density"]))
 }
 
 predict_logdensity_logconcave_1d <- function(newx,
