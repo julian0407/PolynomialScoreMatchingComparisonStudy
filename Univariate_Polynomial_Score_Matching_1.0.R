@@ -89,12 +89,15 @@ build_K_and_l_univariate <- function(
 # (2) Core fit: univariate Score Matching
 # ------------------------------------------------------------
 # - Use identity function as standard for weighting function h
+
+# TODO: ridge evt. entfernen
 fit_score_matching_univariate <- function(
     x,
     m,
     h = function(z) rep(1, length(z)),
     h_prime = function(z) rep(0, length(z)),
     standardize = TRUE,
+    ridge = 0,
     solver = "SCS",
     scs_control = list(max_iters = 100000, eps = 1e-5, alpha = 1.8, verbose = FALSE)
 ) {
@@ -104,6 +107,10 @@ fit_score_matching_univariate <- function(
   if (length(x) < 2) stop("Data vector x must contain at least 
                           two finite observations.")
   if (m < 1) stop("Degree m must be >= 1.")
+  # TODO:
+  if (!is.numeric(ridge) || length(ridge) != 1L || !is.finite(ridge) || ridge < 0) {
+    stop("ridge must be a nonnegative finite scalar.")
+  }
   
   # optional standardization
   if (standardize) {
@@ -125,9 +132,30 @@ fit_score_matching_univariate <- function(
   gvec <- tryCatch(vec(G), error = function(e) reshape(G, c(p, 1)))
   y <- vstack(gvec, c1)
   
+  # TODO:
+  K_raw <- score_loss_input$K
+  K_reg <- K_raw + ridge * diag(nrow(K_raw))
+  
+  # TODO:
+  eig_raw <- tryCatch(
+    eigen(K_raw, symmetric = TRUE, only.values = TRUE)$values,
+    error = function(e) rep(NA_real_, nrow(K_raw))
+  )
+  
+  eig_reg <- tryCatch(
+    eigen(K_reg, symmetric = TRUE, only.values = TRUE)$values,
+    error = function(e) rep(NA_real_, nrow(K_reg))
+  )
+  
+  kappa_raw <- tryCatch(kappa(K_raw, exact = TRUE), error = function(e) NA_real_)
+  kappa_reg <- tryCatch(kappa(K_reg, exact = TRUE), error = function(e) NA_real_)
+  
+  rcond_raw <- tryCatch(1 / kappa(K_raw, exact = TRUE), error = function(e) NA_real_)
+  rcond_reg <- tryCatch(1 / kappa(K_reg, exact = TRUE), error = function(e) NA_real_)
+  
   # Define Score loss as objective function by using the precomputed
   # matrix K and vector l
-  obj <- 0.5 * quad_form(y, Constant(score_loss_input$K)) -
+  obj <- 0.5 * quad_form(y, Constant(K_reg)) -
     t(Constant(matrix(score_loss_input$l, ncol = 1))) %*% y
   
   # Specify CVXR problem
@@ -164,6 +192,17 @@ fit_score_matching_univariate <- function(
       column_scaling = list(
         scale_vec = score_loss_input$scale_vec
       ),
+      # TODO:
+      ridge = ridge,
+      diagnostics = list(
+        kappa_raw = kappa_raw,
+        kappa_reg = kappa_reg,
+        rcond_raw = rcond_raw,
+        rcond_reg = rcond_reg,
+        eigmin_raw = if (all(is.na(eig_raw))) NA_real_ else min(eig_raw, na.rm = TRUE),
+        eigmin_reg = if (all(is.na(eig_reg))) NA_real_ else min(eig_reg, na.rm = TRUE)
+      ),
+      # END TODO
       z_train = z,
       m = m
     ),
@@ -318,11 +357,18 @@ compute_log_normalizer_z_univariate <- function(fit,
     exp(val)
   }
   
+  # TODO: Intervalgrenzen sin nicht -inf, inf warum vertretbar?
+  if (is.null(interval)) {
+    interval <- get_default_density_bounds_z_univariate(fit, n_sd = 8, min_half_width = 8)
+  }
+  interval <- as.numeric(interval)
+  
+  # TODO: Intervalgrenzen sin nicht -inf, inf warum vertretbar?
   integ <- tryCatch(
     stats::integrate(
       f = integrand,
-      lower = -Inf,
-      upper = Inf,
+      lower = interval[1L],
+      upper = interval[2L],
       subdivisions = subdivisions,
       rel.tol = rel.tol,
       abs.tol = abs.tol,

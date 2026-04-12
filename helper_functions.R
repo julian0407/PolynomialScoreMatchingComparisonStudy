@@ -203,3 +203,50 @@ as_obs_matrix <- function(x) {
   }
 }
 
+
+
+
+# ------------------------------------------------------------
+# (5) To be checked !!!!!
+# ------------------------------------------------------------
+sanitize_filename_component <- function(x) {
+  x <- tolower(as.character(x %||% "unknown"))
+  x <- gsub("[^a-z0-9]+", "-", x)
+  x <- gsub("(^-+|-+$)", "", x)
+  if (!nzchar(x)) x <- "unknown"
+  x
+}
+
+make_method_tag <- function(estimator_specs = NULL) {
+  if (is.null(estimator_specs) || length(estimator_specs) == 0L) return("unknown")
+  methods <- unique(vapply(estimator_specs, function(s) s$method %||% "unknown", character(1)))
+  if (length(methods) == 1L) return(sanitize_filename_component(methods))
+  "mixed"
+}
+
+make_benchmark_filename <- function(kind = c("final", "biasvar"),
+                                    truth_name = NULL,
+                                    estimator_specs = NULL,
+                                    family = NULL,
+                                    ext = "rds") {
+  kind <- match.arg(kind)
+  parts <- c(
+    kind,
+    sanitize_filename_component(truth_name %||% family %||% "benchmark"),
+    make_method_tag(estimator_specs),
+    format(Sys.time(), "%Y%m%d-%H%M%S")
+  )
+  paste0(paste(parts, collapse = "_"), ".", ext)
+}
+
+apply_optional_log_scale <- function(p, values, axis = c("x", "y"), requested = FALSE) {
+  axis <- match.arg(axis)
+  if (!isTRUE(requested)) return(p)
+  vals <- as.numeric(values)
+  vals <- vals[is.finite(vals)]
+  if (length(vals) == 0L || any(vals <= 0)) {
+    warning(sprintf("Log scale on axis '%s' skipped because non-positive values are present.", axis), call. = FALSE)
+    return(p)
+  }
+  if (axis == "x") p + ggplot2::scale_x_log10() else p + ggplot2::scale_y_log10()
+}
