@@ -220,6 +220,8 @@ run_one_final_experiment <- function(n,
     condition_number = NA_real_,
     normalization_ok = NA,
     normalization_suspect = NA,
+    normalization_suspect_0_5 = NA,
+    normalization_suspect_1_0 = NA,
     normalization_loghat_finite_share = NA_real_,
     normalization_median_kl_shift = NA_real_,
     stringsAsFactors = FALSE
@@ -233,6 +235,16 @@ run_one_final_experiment <- function(n,
 
   x_test <- r_sample(n_test)
   if (family == "univariate") x_test <- as.numeric(x_test) else x_test <- as.matrix(x_test)
+  
+  if (family == "univariate") {
+    train_min <- min(x_train, na.rm = TRUE)
+    train_max <- max(x_train, na.rm = TRUE)
+    test_min  <- min(x_test, na.rm = TRUE)
+    test_max  <- max(x_test, na.rm = TRUE)
+    
+    base_row$left_gap  <- max(0, train_min - test_min)
+    base_row$right_gap <- max(0, test_max - train_max)
+  }
 
   diags <- tryCatch(
     extract_fit_diagnostics(fit),
@@ -327,25 +339,36 @@ run_one_final_experiment <- function(n,
       base_row$normalization_loghat_finite_share <- finite_share
       base_row$normalization_median_kl_shift <- median_kl_shift
       
-      kl_point <- log_true - log_hat
       kl_point <- kl_point[is.finite(kl_point)]
       mean_kl <- mean(kl_point)
       sd_kl   <- sd(kl_point)
-      constant_shift_flag <-
+      
+      constant_shift_flag_0_5 <-
         length(kl_point) > 10 &&
         is.finite(mean_kl) &&
         is.finite(sd_kl) &&
-        abs(mean_kl) > 5 &&
+        abs(mean_kl) > 0.1 &&
         (sd_kl / abs(mean_kl)) < 0.1
       
-      # Verdächtig, wenn:
-      # 1) harter Normalisierungscheck schon fehlschlägt
-      # 2) zu viele log-density Vorhersagen nicht endlich sind
-      # 3) die pointwise KL-Werte fast überall um eine große Konstante verschoben sind
-      base_row$normalization_suspect <-
+      constant_shift_flag_1_0 <-
+        length(kl_point) > 10 &&
+        is.finite(mean_kl) &&
+        is.finite(sd_kl) &&
+        abs(mean_kl) > 1.0 &&
+        (sd_kl / abs(mean_kl)) < 0.1
+      
+      base_row$normalization_suspect_0_5 <-
         isFALSE(dens_diag$normalization_ok) ||
         (!is.na(finite_share) && finite_share < 0.99) ||
-        (!is.na(median_kl_shift) && constant_shift_flag)
+        constant_shift_flag_0_5
+      
+      base_row$normalization_suspect_1_0 <-
+        isFALSE(dens_diag$normalization_ok) ||
+        (!is.na(finite_share) && finite_share < 0.99) ||
+        constant_shift_flag_1_0
+      
+      # Standard bleibt 0.5
+      base_row$normalization_suspect <- base_row$normalization_suspect_0_5
     }
   }
 
@@ -441,7 +464,9 @@ run_final_benchmark <- function(sample_sizes,
     "n", "repetition", "run_seed", "method_label", "method",
     "fit_time_sec", "density_inference_time_sec", "score_inference_time_sec", "total_inference_time_sec",
     "success", "status", "iterations", "objective_value", "condition_number",
+    "left_gap", "right_gap",
     "normalization_ok", "normalization_suspect",
+    "normalization_suspect_0_1", "normalization_suspect_1_0",
     "normalization_loghat_finite_share", "normalization_median_kl_shift",
     metric_columns
   )
@@ -554,10 +579,11 @@ aggregate_final_benchmark <- function(obj,
                                       drop_method_labels = NULL,
                                       keep_methods = NULL,
                                       drop_methods = NULL,
-                                      across_runs_center = c("mean", "median")) {
+                                      across_runs_center = c("mean", "median", "sd"),
+                                      exclude_normalization_suspect = FALSE) {
   across_runs_center <- match.arg(across_runs_center)
   if (!inherits(obj, "final_benchmark")) stop("obj must be 'final_benchmark'.")
-
+  
   df <- filter_benchmark_df_by_n(obj$raw, keep_n = keep_n, drop_n = drop_n)
   df <- filter_benchmark_df_by_method(
     df,
@@ -566,7 +592,14 @@ aggregate_final_benchmark <- function(obj,
     keep_methods = keep_methods,
     drop_methods = drop_methods
   )
-
+  
+  if (isTRUE(exclude_normalization_suspect)) {
+    if (!"normalization_suspect" %in% names(df)) {
+      stop("Column 'normalization_suspect' not found in benchmark output.")
+    }
+    df <- df[!(df$method %in% "SM" & df$normalization_suspect %in% TRUE), , drop = FALSE]
+  }
+  
   if (!metric %in% names(df)) {
     available <- intersect(c(
       obj$settings$metric_columns,
@@ -579,14 +612,21 @@ aggregate_final_benchmark <- function(obj,
       paste(available, collapse = ", ")
     ))
   }
-
+  
+  if (nrow(df) == 0L) {
+    return(data.frame())
+  }
+  
   split_key <- interaction(df$method_label, df$n, drop = TRUE)
+  
   agg_list <- lapply(split(df, split_key), function(dd) {
     x <- as.numeric(dd[[metric]])
     x_finite <- x[is.finite(x)]
+    
     q1 <- safe_quantile(x, 0.25)
     q3 <- safe_quantile(x, 0.75)
     iqr <- if (is.finite(q1) && is.finite(q3)) q3 - q1 else NA_real_
+    
     outlier_share <- if (length(x_finite) == 0L || !is.finite(iqr)) {
       NA_real_
     } else if (iqr == 0) {
@@ -596,18 +636,21 @@ aggregate_final_benchmark <- function(obj,
       hi <- q3 + 1.5 * iqr
       mean(x_finite < lo | x_finite > hi)
     }
+    
     failure_rate <- mean(!(dd$success) | !is.finite(x), na.rm = TRUE)
+    
     normalization_failure_rate <- if ("normalization_ok" %in% names(dd)) {
       mean(dd$normalization_ok %in% FALSE, na.rm = TRUE)
     } else {
       NA_real_
     }
+    
     normalization_suspect_rate <- if ("normalization_suspect" %in% names(dd)) {
       mean(dd$normalization_suspect %in% TRUE, na.rm = TRUE)
     } else {
       NA_real_
     }
-
+    
     data.frame(
       method_label = dd$method_label[1],
       method = dd$method[1],
@@ -615,7 +658,12 @@ aggregate_final_benchmark <- function(obj,
       n_non_na = sum(is.finite(x)),
       mean = safe_mean(x),
       median = safe_median(x),
-      selected = if (across_runs_center == "mean") safe_mean(x) else safe_median(x),
+      selected = switch(
+        across_runs_center,
+        mean = safe_mean(x),
+        median = safe_median(x),
+        sd = safe_sd(x)
+      ),
       q25 = q1,
       q75 = q3,
       iqr = iqr,
@@ -628,10 +676,14 @@ aggregate_final_benchmark <- function(obj,
       stringsAsFactors = FALSE
     )
   })
-
+  
   agg <- do.call(rbind, agg_list)
   rownames(agg) <- NULL
-  if (isTRUE(drop_all_na)) agg <- agg[agg$n_non_na > 0L, , drop = FALSE]
+  
+  if (isTRUE(drop_all_na)) {
+    agg <- agg[agg$n_non_na > 0L, , drop = FALSE]
+  }
+  
   agg
 }
 
@@ -692,6 +744,8 @@ debug_benchmark_outliers <- function(obj,
           n = dd$n[idx],
           repetition = dd$repetition[idx],
           run_seed = dd$run_seed[idx],
+          condition_number = dd$condition_number[idx],
+          normalization_suspect = dd$normalization_suspect[idx],
           value = x[idx],
           group_center = center,
           abs_dev = abs_dev[idx],
@@ -831,7 +885,7 @@ replay_benchmark_run <- function(obj,
 
 plot_final_benchmark <- function(obj,
                                  metric,
-                                 center = c("mean", "median"),
+                                 center = c("mean", "median", "sd"),
                                  interval = c("iqr", "none"),
                                  keep_n = NULL,
                                  drop_n = NULL,
@@ -841,7 +895,8 @@ plot_final_benchmark <- function(obj,
                                  drop_methods = NULL,
                                  drop_all_na = TRUE,
                                  log_x = FALSE,
-                                 log_y = FALSE) {
+                                 log_y = FALSE,
+                                 exclude_normalization_suspect = FALSE) {
   center <- match.arg(center)
   interval <- match.arg(interval)
   agg <- aggregate_final_benchmark(
@@ -854,13 +909,19 @@ plot_final_benchmark <- function(obj,
     drop_method_labels = drop_method_labels,
     keep_methods = keep_methods,
     drop_methods = drop_methods,
-    across_runs_center = center
+    across_runs_center = center,
+    exclude_normalization_suspect = exclude_normalization_suspect
   )
 
   if (nrow(agg) == 0L) stop("No rows left after applying the sample-size filter.")
-  y_col <- if (center == "mean") "mean" else "median"
+  y_col <- switch(
+    center,
+    mean = "mean",
+    median = "median",
+    sd = "sd"
+  )
   agg$y <- agg[[y_col]]
-  if (interval == "iqr") {
+  if (interval == "iqr" && center != "sd") {
     agg$ymin <- agg$q25
     agg$ymax <- agg$q75
   } else {
@@ -878,8 +939,11 @@ plot_final_benchmark <- function(obj,
       x = "Sample size n",
       y = metric,
       color = "Method",
-      title = sprintf("%s by sample size", metric),
+      title = sprintf("%s (%s) by sample size", metric, center),
       subtitle = paste(na.omit(c(
+        sprintf("Center: %s", center),
+        sprintf("Exclude normalization suspect: %s", exclude_normalization_suspect),
+        
         if (!is.null(keep_n)) sprintf("Shown n: %s", paste(sort(unique(keep_n)), collapse = ", ")) else NULL,
         if (!is.null(drop_n)) sprintf("Dropped n: %s", paste(sort(unique(drop_n)), collapse = ", ")) else NULL,
         if (!is.null(keep_method_labels)) sprintf("Shown labels: %s", paste(unique(keep_method_labels), collapse = ", ")) else NULL,
