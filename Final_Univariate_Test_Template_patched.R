@@ -1,37 +1,28 @@
 # ============================================================
-# Final_Univariate_Test_Template_patched.R
-# Template for univariate benchmark runs under the simplified
-# evaluation design.
+# Final_Univariate_Benchmark_Runs.R
+# Template for univariate benchmark runs 
 #
-# Core metrics:
-#   - kl
-#   - score_loss
-# Optional variants from metric args:
-#   - *_central      : metric on empirical bulk region only
-#   - score_loss_trim: score metric after trimming the largest
-#                      pointwise score losses
+# Create final benchmark objects that are saved in .rds
+# objects and analyzed in seperate script
+#
+#
+# Note: Some functionalities are still implemented that were not used
+# in the final analysis.
 # ============================================================
 
-source("helper_functions.R")
-source("KDE.R")
-source("LogConcaveMLE.R")
-source("Univariate_Polynomial_Score_Matching_1.0.R")
-source("Multivariate_Pairwise_Polynomial_Score_Matching.R")
-source("Evaluation_Metrics_Clean.R")
-source("BiasVariance_Score_Clean_patched.R")
-source("Tests_Clean_patched.R")
+source("01_Rscripts/03_Test_Framework/Unified_Testing_Framework.R")
 
 # ------------------------------------------------------------
-# A) Global settings
+# (1) Global settings
 # ------------------------------------------------------------
 sample_sizes_main <- c(50, 100, 200, 500, 1000, 5000)
-sample_sizes_bias_variance <- c(50, 100, 200, 500, 1000)
 metrics_main <- c("kl", "score_loss")
 seed_main <- 123
 
 # central_trim evaluates the metric on the empirical bulk of the test set.
 # robust_trim only applies to score_loss and trims the largest pointwise
 # score losses after the score errors have been computed.
+# args are set in specific estimators
 score_metric_args_default <- list(
   central_trim = NULL,
   robust_trim = NULL
@@ -42,7 +33,7 @@ density_metric_args_default <- list(
 )
 
 # ------------------------------------------------------------
-# B) True univariate distributions
+# (2) True univariate distributions
 # ------------------------------------------------------------
 make_truth_gaussian <- function(mean = 0, sd = 1) {
   list(
@@ -128,6 +119,10 @@ make_truth_laplace <- function(location = 0, scale = 1) {
   )
 }
 
+# ------------------------------------------------------------
+# (3) Create true density objects
+# ------------------------------------------------------------
+
 truth_gaussian <- make_truth_gaussian(-50, 4)
 truth_logistic <- make_truth_logistic()
 truth_gumbel <- make_truth_gumbel()
@@ -143,7 +138,7 @@ all_truths <- list(
 )
 
 # ------------------------------------------------------------
-# C) Candidate lists per method family
+# (4) Create estimator candidate lists per method family
 # ------------------------------------------------------------
 make_kde_specs_1d <- function(score_metric_args = score_metric_args_default,
                               density_metric_args = density_metric_args_default) {
@@ -187,16 +182,50 @@ make_mle_specs_1d <- function(score_metric_args = score_metric_args_default,
   )
 }
 
-make_sm_specs_1d <- function(m_values = c(1, 2, 3, 4, 5),
-                             score_metric_args = score_metric_args_default,
-                             density_metric_args = density_metric_args_default) {
+make_sm_specs_1d_noridge <- function(m_values = c(1, 2, 3, 4, 5, 6),
+                                     score_metric_args = score_metric_args_default,
+                                     density_metric_args = density_metric_args_default) {
   lapply(m_values, function(m) {
     list(
-      label = paste0("SM_m", m),
+      label = paste0("SM_m", m, "_noridge_std"),
       method = "SM",
       smoothed = FALSE,
-      fit_args = list(m = m, standardize = TRUE, ridge = 1e-2),
-      density_predict_args = list(subdivisions = 200L, rel.tol = 1e-8, stop_on_failure = FALSE),
+      fit_args = list(
+        m = m,
+        standardize = TRUE,
+        ridge = 0
+      ),
+      density_predict_args = list(
+        subdivisions = 200L,
+        rel.tol = 1e-8,
+        stop_on_failure = FALSE
+      ),
+      score_predict_args = list(),
+      score_metric_args = score_metric_args,
+      density_metric_args = density_metric_args
+    )
+  })
+}
+
+make_sm_specs_1d_ridge <- function(m_values = c(1, 2, 3, 4, 5, 6),
+                                   ridge = 1e-2,
+                                   score_metric_args = score_metric_args_default,
+                                   density_metric_args = density_metric_args_default) {
+  lapply(m_values, function(m) {
+    list(
+      label = paste0("SM_m", m, "_ridge1e-02_std"),
+      method = "SM",
+      smoothed = FALSE,
+      fit_args = list(
+        m = m,
+        standardize = TRUE,
+        ridge = ridge
+      ),
+      density_predict_args = list(
+        subdivisions = 200L,
+        rel.tol = 1e-8,
+        stop_on_failure = FALSE
+      ),
       score_predict_args = list(),
       score_metric_args = score_metric_args,
       density_metric_args = density_metric_args
@@ -205,7 +234,7 @@ make_sm_specs_1d <- function(m_values = c(1, 2, 3, 4, 5),
 }
 
 # ------------------------------------------------------------
-# D) Benchmark wrappers
+# (5) Benchmark wrapper 
 # ------------------------------------------------------------
 run_family_selection_benchmark <- function(truth,
                                            estimator_specs,
@@ -238,101 +267,14 @@ run_family_selection_benchmark <- function(truth,
   )
 }
 
-run_family_bias_variance <- function(truth,
-                                     estimator_specs,
-                                     sample_sizes = sample_sizes_bias_variance,
-                                     n_rep = 50,
-                                     seed = seed_main,
-                                     verbose = TRUE,
-                                     save = FALSE,
-                                     save_dir = ".",
-                                     save_name = NULL) {
-  eval_grid <- make_eval_grid(r_sample = truth$r_sample, family = truth$family, seed = seed)
-  run_bias_variance_score_benchmark(
-    sample_sizes = sample_sizes,
-    family = truth$family,
-    estimator_specs = estimator_specs,
-    r_sample = truth$r_sample,
-    true_score = truth$true_score,
-    eval_grid = eval_grid,
-    truth_name = truth$name,
-    n_rep = n_rep,
-    seed = seed,
-    verbose = verbose,
-    save = save,
-    save_dir = save_dir,
-    save_name = save_name
-  )
-}
-
 # ------------------------------------------------------------
-# E) Example runs
-# ------------------------------------------------------------
-# Example: compare SM candidates on Gaussian data and save the object.
-# sm_gaussian_candidates <- run_family_selection_benchmark(
-#   truth = truth_gaussian,
-#   estimator_specs = make_sm_specs_1d(
-#     m_values = c(1,2,3,4, 5),
-#     score_metric_args = list(central_trim = 0.05, robust_trim = 0.01),
-#     density_metric_args = list(central_trim = 0.05)
-#   ),
-#   n_rep = 10,
-#   n_test = 1000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# #
-# aggregate_final_benchmark(sm_gaussian_candidates, metric = "kl", across_runs_center = "median")
-# aggregate_final_benchmark(sm_gaussian_candidates, metric = "score_loss_trim", across_runs_center = "median")
-# plot_final_benchmark(sm_gaussian_candidates, metric = "kl", center = "mean", interval = "none", log_y = TRUE)
-# plot_final_benchmark(sm_gaussian_candidates, metric = "score_loss", center = "median", interval = "none", log_y = TRUE)
-#
-# Bias-variance example:
-# sm_gaussian_bv <- run_family_bias_variance(
-#   truth = truth_gaussian,
-#   estimator_specs = make_sm_specs_1d(m_values = c(1, 2, 3, 4, 5)),
-#   n_rep = 75,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# plot_score_bias_variance(sm_gaussian_bv, metric = "integrated_bias2_median", log_y = TRUE)
-
-# sm_logistic_candidates <- run_family_selection_benchmark(
-#   truth = truth_logistic,
-#   estimator_specs = make_sm_specs_1d(
-#     m_values = c(1, 2, 3, 4, 5, 6),
-#     score_metric_args = list(central_trim = 0.05, robust_trim = 0.01),
-#     density_metric_args = list(central_trim = 0.05)
-#   ),
-#   n_rep = 10,
-#   n_test = 1000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# 
-# aggregate_final_benchmark(sm_logistic_candidates, metric = "kl", across_runs_center = "median")
-# aggregate_final_benchmark(sm_logistic_candidates, metric = "score_loss_trim", across_runs_center = "median")
-# plot_final_benchmark(sm_logistic_candidates, metric = "kl", center = "mean", interval = "none", log_y = TRUE)
-# plot_final_benchmark(sm_logistic_candidates, metric = "score_loss", center = "median", interval = "none", log_y = TRUE)
-
-# Bias-variance example:
-# sm_logistic_bv <- run_family_bias_variance(
-#   truth = truth_logistic,
-#   estimator_specs = make_sm_specs_1d(m_values = c(1, 2, 3, 4, 5, 6)),
-#   n_rep = 75,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# plot_score_bias_variance(sm_logistic_bv, metric = "integrated_bias2_median", log_y = TRUE)
-
-
-
-# ------------------------------------------------------------
-# F) Estimatorinterne Tests + manuelle Vergleichstests
-#     in deiner bestehenden Struktur
+# (6)) Example runs
 # ------------------------------------------------------------
 
-# Einheitliche Trim-Settings fuer die neuen Runs
+# ------------------------------------------------------------
+# (6.1) Set central and trim values
+# ------------------------------------------------------------
+
 score_metric_args_trimmed <- list(
   central_trim = 0.05,
   robust_trim  = 0.01
@@ -343,67 +285,7 @@ density_metric_args_trimmed <- list(
 )
 
 # ------------------------------------------------------------
-# F1) SM-Specs ohne Ridge
-#     (gleiche Struktur wie make_sm_specs_1d, aber ridge = 0)
-# ------------------------------------------------------------
-make_sm_specs_1d_noridge <- function(m_values = c(1, 2, 3, 4, 5, 6),
-                                     score_metric_args = score_metric_args_default,
-                                     density_metric_args = density_metric_args_default) {
-  lapply(m_values, function(m) {
-    list(
-      label = paste0("SM_m", m, "_noridge_std"),
-      method = "SM",
-      smoothed = FALSE,
-      fit_args = list(
-        m = m,
-        standardize = TRUE,
-        ridge = 0
-      ),
-      density_predict_args = list(
-        subdivisions = 200L,
-        rel.tol = 1e-8,
-        stop_on_failure = FALSE
-      ),
-      score_predict_args = list(),
-      score_metric_args = score_metric_args,
-      density_metric_args = density_metric_args
-    )
-  })
-}
-
-# ------------------------------------------------------------
-# F2) SM-Specs mit Ridge
-#     (explizit als zweite Funktion, wie gewuenscht)
-# ------------------------------------------------------------
-make_sm_specs_1d_ridge <- function(m_values = c(1, 2, 3, 4, 5, 6),
-                                   ridge = 1e-2,
-                                   score_metric_args = score_metric_args_default,
-                                   density_metric_args = density_metric_args_default) {
-  lapply(m_values, function(m) {
-    list(
-      label = paste0("SM_m", m, "_ridge1e-02_std"),
-      method = "SM",
-      smoothed = FALSE,
-      fit_args = list(
-        m = m,
-        standardize = TRUE,
-        ridge = ridge
-      ),
-      density_predict_args = list(
-        subdivisions = 200L,
-        rel.tol = 1e-8,
-        stop_on_failure = FALSE
-      ),
-      score_predict_args = list(),
-      score_metric_args = score_metric_args,
-      density_metric_args = density_metric_args
-    )
-  })
-}
-
-# ------------------------------------------------------------
-# F3) Schätzerinterne Tests
-#     mit central_trim + robust_trim
+# (6.2) Tests within estimator families
 # ------------------------------------------------------------
 
 # --- 1) Gaussian -----------------------------------------------------------
@@ -432,7 +314,7 @@ make_sm_specs_1d_ridge <- function(m_values = c(1, 2, 3, 4, 5, 6),
 #   save_dir = "results"
 # )
 
-# sm_gaussian_candidates_noridge <- run_family_selection_benchmark(
+# sm_gaussian_candidates2_noridge <- run_family_selection_benchmark(
 #   truth = truth_gaussian,
 #   estimator_specs = make_sm_specs_1d_noridge(
 #     m_values = c(1, 2, 3, 4, 5, 6),
@@ -445,7 +327,7 @@ make_sm_specs_1d_ridge <- function(m_values = c(1, 2, 3, 4, 5, 6),
 #   save_dir = "results"
 # )
 # 
-# sm_gaussian_candidates_ridge <- run_family_selection_benchmark(
+# sm_gaussian_candidates2_ridge <- run_family_selection_benchmark(
 #   truth = truth_gaussian,
 #   estimator_specs = make_sm_specs_1d_ridge(
 #     m_values = c(1, 2, 3, 4, 5, 6),
@@ -643,7 +525,7 @@ make_sm_specs_1d_ridge <- function(m_values = c(1, 2, 3, 4, 5, 6),
 #   save = TRUE,
 #   save_dir = "results"
 # )
-# 
+
 # sm_student_candidates_noridge <- run_family_selection_benchmark(
 #   truth = truth_student,
 #   estimator_specs = make_sm_specs_1d_noridge(
@@ -672,8 +554,10 @@ make_sm_specs_1d_ridge <- function(m_values = c(1, 2, 3, 4, 5, 6),
 # )
 
 # ------------------------------------------------------------
-# F4) Prognose fuer den Schlussvergleich
+# (6.3) Helper for Comparison across estimators
 # ------------------------------------------------------------
+
+# Create tags of methods that should be applied for each density
 initial_best_guess <- list(
   gaussian = list(
     kde = "KDE_SJ",
@@ -684,32 +568,34 @@ initial_best_guess <- list(
   logistic = list(
     kde = "KDE_ucv",
     mle = "MLE_smoothed",
-    sm1 = "SM_m3_ridge1e-02_std",
-    sm2 = "SM_m4_ridge1e-02_std"
+    sm1 = "SM_m2_ridge1e-02_std",
+    sm2 = "SM_m3_ridge1e-02_std",
+    sm3 = "SM_m4_ridge1e-02_std"
   ),
   gumbel = list(
     kde = "KDE_ucv",
     mle = "MLE_smoothed",
-    sm1 = "SM_m3_ridge1e-02_std",
-    sm2 = "SM_m4_ridge1e-02_std"
+    sm1 = "SM_m2_ridge1e-02_std",
+    sm2 = "SM_m3_ridge1e-02_std",
+    sm3 = "SM_m4_ridge1e-02_std"
   ),
   laplace = list(
     kde = "KDE_SJ",
     mle = "MLE_unsmoothed",
     sm1 = "SM_m2_ridge1e-02_std",
-    sm2 = "SM_m3_ridge1e-02_std"
+    sm2 = "SM_m3_ridge1e-02_std",
+    sm3 = "SM_m4_ridge1e-02_std"
   ),
   student = list(
     kde = "KDE_SJ",
     mle = "MLE_smoothed",
     sm1 = "SM_m2_ridge1e-02_std",
-    sm2 = "SM_m3_ridge1e-02_std"
+    sm2 = "SM_m3_ridge1e-02_std",
+    sm3 = "SM_m4_ridge1e-02_std"
   )
 )
 
-# ------------------------------------------------------------
-# F5) Helper: Spec-Pool fuer manuelle Vergleiche
-# ------------------------------------------------------------
+# Create pool of possible estimators
 manual_spec_pool <- c(
   make_kde_specs_1d(
     score_metric_args = score_metric_args_trimmed,
@@ -732,6 +618,7 @@ manual_spec_pool <- c(
   )
 )
 
+# Get estimators by labels
 get_specs_by_labels <- function(labels, spec_pool = manual_spec_pool) {
   keep <- vapply(spec_pool, function(sp) sp$label %in% labels, logical(1))
   out <- spec_pool[keep]
@@ -745,6 +632,7 @@ get_specs_by_labels <- function(labels, spec_pool = manual_spec_pool) {
   out[match(labels, found_labels)]
 }
 
+# Get final estimator list per density based on initial list above
 make_manual_compare_specs <- function(truth_name) {
   guess <- initial_best_guess[[truth_name]]
   if (is.null(guess)) stop("Unknown truth_name: ", truth_name)
@@ -753,7 +641,7 @@ make_manual_compare_specs <- function(truth_name) {
 }
 
 # ------------------------------------------------------------
-# F6) Manuelle Vergleichstests am Ende
+#  (6.4) Final Benchmark Runs for Comparison across estimator families
 # ------------------------------------------------------------
 manual_compare_gaussian <- make_manual_compare_specs("gaussian")
 manual_compare_logistic <- make_manual_compare_specs("logistic")
@@ -769,15 +657,15 @@ manual_compare_student <- make_manual_compare_specs("student")
 #   save = TRUE,
 #   save_dir = "results"
 # )
-# 
-# res_compare_logistic <- run_family_selection_benchmark(
-#   truth = truth_logistic,
-#   estimator_specs = manual_compare_logistic,
-#   n_rep = 100,
-#   n_test = 5000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+
+res_compare_logistic <- run_family_selection_benchmark(
+  truth = truth_logistic,
+  estimator_specs = manual_compare_logistic,
+  n_rep = 100,
+  n_test = 5000,
+  save = TRUE,
+  save_dir = "results"
+)
 
 res_compare_gumbel <- run_family_selection_benchmark(
   truth = truth_gumbel,
@@ -789,15 +677,15 @@ res_compare_gumbel <- run_family_selection_benchmark(
   seed = 187
 )
 
-# res_compare_laplace <- run_family_selection_benchmark(
-#   truth = truth_laplace,
-#   estimator_specs = manual_compare_laplace,
-#   n_rep = 100,
-#   n_test = 5000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# 
+res_compare_laplace <- run_family_selection_benchmark(
+  truth = truth_laplace,
+  estimator_specs = manual_compare_laplace,
+  n_rep = 100,
+  n_test = 5000,
+  save = TRUE,
+  save_dir = "results"
+)
+
 # res_compare_student <- run_family_selection_benchmark(
 #   truth = truth_student,
 #   estimator_specs = manual_compare_student,
@@ -807,199 +695,4 @@ res_compare_gumbel <- run_family_selection_benchmark(
 #   save_dir = "results"
 # )
 
-# ------------------------------------------------------------
-# F7) Praktische Auswertung
-# ------------------------------------------------------------
-# Beispiele:
-# aggregate_final_benchmark(sm_gaussian_candidates_noridge, metric = "score_loss_central_trim", across_runs_center = "median")
-# aggregate_final_benchmark(sm_gaussian_candidates_ridge,   metric = "score_loss_central_trim", across_runs_center = "median")
-# aggregate_final_benchmark(kde_gaussian_candidates,        metric = "kl_central",             across_runs_center = "median")
-# aggregate_final_benchmark(mle_gaussian_candidates,        metric = "kl_central",             across_runs_center = "median")
-#
-# aggregate_final_benchmark(res_compare_gaussian, metric = "kl_central", across_runs_center = "median")
-# aggregate_final_benchmark(res_compare_gaussian, metric = "score_loss_central_trim", across_runs_center = "median")
-#
-# plot_final_benchmark(res_compare_gaussian, metric = "kl", center = "median", interval = "none", log_y = TRUE)
-# plot_final_benchmark(res_compare_gaussian, metric = "score_loss_central_trim", center = "median", interval = "none", log_y = TRUE)
-
-# plot_final_benchmark(sm_gaussian_candidates_noridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = TRUE)
-# plot_final_benchmark(sm_gaussian_candidates_noridge, metric = "score_loss_central", center = "mean", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = FALSE)
-# plot_final_benchmark(sm_gaussian_candidates_noridge, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE)
-# 
-# aggregate_final_benchmark(sm_gaussian_candidates_noridge, metric = "kl", across_runs_center = "mean",
-#                           exclude_normalization_suspect = TRUE)
-# aggregate_final_benchmark(sm_gaussian_candidates_noridge, metric = "score_loss", across_runs_center = "mean")
-# aggregate_final_benchmark(sm_gaussian_candidates_noridge, metric = "score_loss", across_runs_center = "sd")
-# 
-# plot_final_benchmark(sm_gaussian_candidates_ridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = TRUE)
-# plot_final_benchmark(sm_gaussian_candidates_ridge, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE)
-# 
-# plot_final_benchmark(kde_gaussian_candidates, metric = "kl", center = "mean", interval = "none", log_y = TRUE)
-# plot_final_benchmark(kde_gaussian_candidates, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(kde_gaussian_candidates, metric = "score_loss", across_runs_center = "mean")
-# 
-# plot_final_benchmark(mle_gaussian_candidates, metric = "kl", center = "median", interval = "none", log_y = TRUE)
-# plot_final_benchmark(mle_gaussian_candidates, metric = "score_loss_central", center = "median", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(mle_gaussian_candidates, metric = "score_loss", across_runs_center = "mean")
-# 
-# plot_final_benchmark(compare_gaussian_candidates, metric = "kl", center = "median", interval = "none", log_y = TRUE)
-# plot_final_benchmark(compare_gaussian_candidates, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(compare_gaussian_candidates, metric = "score_loss", across_runs_center = "mean")
-# 
-# plot_final_benchmark(
-#   compare_gaussian_candidates,
-#   metric = "fit_time_sec",
-#   center = "median",
-#   interval = "none",
-#   log_y = TRUE
-# )
-# 
-# plot_final_benchmark(
-#   compare_gaussian_candidates,
-#   metric = "density_inference_time_sec",
-#   center = "median",
-#   interval = "none",
-#   log_y = TRUE
-# )
-# 
-# # mle_gaussian_candidates <- readRDS("results/final_gaussian_mle_20260413-002050.rds")
-# 
-# 
-# # logistic
-# 
-# plot_final_benchmark(sm_logistic_candidates_no_ridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = FALSE)
-# plot_final_benchmark(sm_logistic_candidates_no_ridge, metric = "kl", center = "median", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = TRUE)
-# plot_final_benchmark(sm_logistic_candidates_no_ridge, metric = "score_loss_central", center = "mean", interval = "none", log_y = TRUE)
-# 
-# aggregate_final_benchmark(sm_logistic_candidates_no_ridge, metric = "kl", across_runs_center = "median", exclude_normalization_suspect = FALSE)
-# aggregate_final_benchmark(sm_logistic_candidates_no_ridge, metric = "score_loss", across_runs_center = "mean")
-# 
-# plot_final_benchmark(sm_logistic_candidates_ridge, metric = "kl", center = "median", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = FALSE)
-# plot_final_benchmark(sm_logistic_candidates_ridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = TRUE)
-# 
-# 
-# plot_final_benchmark(compare_logistic_candidates, metric = "kl", center = "median", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = FALSE)
-# plot_final_benchmark(compare_logistic_candidates, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE)
-# 
-# # ridge
-# plot_final_benchmark(sm_logistic_candidates_ridge, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE)
-# plot_final_benchmark(sm_logistic_candidates_ridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = FALSE)
-# plot_final_benchmark(sm_logistic_candidates_ridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = TRUE)
-# aggregate_final_benchmark(sm_logistic_candidates_ridge, metric = "score_loss_central", across_runs_center = "mean")
-# aggregate_final_benchmark(sm_logistic_candidates_ridge, metric = "kl", across_runs_center = "mean",
-#                           exclude_normalization_suspect = FALSE)
-# aggregate_final_benchmark(sm_logistic_candidates_ridge, metric = "kl", across_runs_center = "mean",
-#                           exclude_normalization_suspect = TRUE)
-# 
-# plot_final_benchmark(kde_logistic_candidates, metric = "kl", center = "mean", interval = "none", log_y = TRUE)
-# plot_final_benchmark(kde_logistic_candidates, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(kde_logistic_candidates, metric = "score_loss", across_runs_center = "mean")
-# 
-# plot_final_benchmark(mle_logistic_candidates, metric = "kl_central", center = "median", interval = "none", log_y = TRUE)
-# plot_final_benchmark(mle_logistic_candidates, metric = "score_loss", center = "median", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(mle_logistic_candidates, metric = "score_loss", across_runs_center = "mean")
-# 
-# plot_final_benchmark(
-#   compare_logistic_candidates,
-#   metric = "fit_time_sec",
-#   center = "median",
-#   interval = "none",
-#   log_y = TRUE
-# )
-# 
-# plot_final_benchmark(
-#   compare_logistic_candidates,
-#   metric = "density_inference_time_sec",
-#   center = "median",
-#   interval = "none",
-#   log_y = TRUE
-# )
-# 
-# # Gumble
-# 
-# plot_final_benchmark(sm_gumble_candidates_noridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE)
-# plot_final_benchmark(sm_gumble_candidates_noridge, metric = "score_loss", center = "median", interval = "none", log_y = TRUE)
-# 
-# aggregate_final_benchmark(sm_gumble_candidates_noridge, metric = "kl", across_runs_center = "mean")
-# aggregate_final_benchmark(sm_gumble_candidates_noridge, metric = "score_loss", across_runs_center = "mean")
-# 
-# plot_final_benchmark(sm_gumble_candidates_ridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE)
-# plot_final_benchmark(sm_gumble_candidates_ridge, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(sm_gumble_candidates_ridge, metric = "score_loss", across_runs_center = "mean")
-# 
-# plot_final_benchmark(kde_gumble_candidates, metric = "kl", center = "mean", interval = "none", log_y = TRUE)
-# plot_final_benchmark(kde_gumble_candidates, metric = "score_loss_central", center = "median", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(kde_gumble_candidates, metric = "score_loss_central", across_runs_center = "mean")
-# 
-# plot_final_benchmark(mle_gumble_candidates, metric = "kl", center = "median", interval = "none", log_y = TRUE)
-# plot_final_benchmark(mle_gumble_candidates, metric = "score_loss_central", center = "median", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(mle_gumble_candidates, metric = "score_loss", across_runs_center = "mean")
-# 
-# # Laplace
-# 
-# plot_final_benchmark(sm_laplace_candidates_noridge, metric = "kl", center = "median", interval = "none", log_y = TRUE)
-# plot_final_benchmark(sm_laplace_candidates_noridge, metric = "score_loss", center = "median", interval = "none", log_y = TRUE)
-# 
-# aggregate_final_benchmark(sm_laplace_candidates_noridge, metric = "kl", across_runs_center = "mean")
-# aggregate_final_benchmark(sm_laplace_candidates_noridge, metric = "score_loss", across_runs_center = "mean")
-# 
-# plot_final_benchmark(sm_laplace_candidates_ridge, metric = "kl", center = "median", interval = "none", log_y = TRUE)
-# plot_final_benchmark(sm_laplace_candidates_ridge, metric = "score_loss", center = "median", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(sm_laplace_candidates_ridge, metric = "score_loss", across_runs_center = "mean")
-# 
-# plot_final_benchmark(kde_laplace_candidates, metric = "kl", center = "mean", interval = "none", log_y = TRUE)
-# plot_final_benchmark(kde_laplace_candidates, metric = "score_loss_central", center = "median", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(kde_laplace_candidates, metric = "score_loss_central", across_runs_center = "mean")
-# 
-# plot_final_benchmark(mle_laplace_candidates, metric = "kl", center = "median", interval = "none", log_y = TRUE)
-# plot_final_benchmark(mle_laplace_candidates, metric = "score_loss_central", center = "median", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(mle_laplace_candidates, metric = "score_loss", across_runs_center = "mean")
-# 
-# # Student t
-# 
-# plot_final_benchmark(sm_student_candidates_noridge, metric = "kl", center = "median", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = FALSE)
-# plot_final_benchmark(sm_student_candidates_noridge, metric = "kl", center = "median", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = TRUE)
-# plot_final_benchmark(sm_student_candidates_noridge, metric = "score_loss_central", center = "median", interval = "none", log_y = TRUE)
-# 
-# aggregate_final_benchmark(sm_student_candidates_noridge, metric = "kl", across_runs_center = "mean",
-#                           exclude_normalization_suspect = FALSE)
-# aggregate_final_benchmark(sm_student_candidates_noridge, metric = "kl", across_runs_center = "mean",
-#                           exclude_normalization_suspect = TRUE)
-# aggregate_final_benchmark(sm_student_candidates_noridge, metric = "score_loss", across_runs_center = "mean")
-# 
-# plot_final_benchmark(sm_student_candidates_ridge, metric = "kl", center = "median", interval = "none", log_y = TRUE)
-# plot_final_benchmark(sm_student_candidates_ridge, metric = "score_loss_central", center = "mean", interval = "none", log_y = TRUE)
-# 
-# plot_final_benchmark(kde_student_candidates, metric = "kl", center = "mean", interval = "none", log_y = TRUE)
-# plot_final_benchmark(kde_student_candidates, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(kde_student_candidates, metric = "score_loss", across_runs_center = "mean")
-# 
-# plot_final_benchmark(mle_student_candidates, metric = "kl", center = "median", interval = "none", log_y = TRUE)
-# plot_final_benchmark(mle_student_candidates, metric = "score_loss", center = "median", interval = "none", log_y = TRUE)
-# aggregate_final_benchmark(mle_student_candidates, metric = "score_loss", across_runs_center = "mean")
-# 
-# 
-# outliers <- debug_benchmark_outliers(sm_gaussian_candidates_ridge, metric_pattern = "^kl$", top_n = 3)
-# outliers <- outliers[order(-abs(outliers$robust_z)), ]
-# outliers <- outliers[outliers$normalization_suspect == FALSE, ]
-# outliers
-# 
-# test <- replay_benchmark_run(sm_gaussian_candidates_ridge, "SM_m3_ridge1e-02_std", 1000, run_seed = 1519083906)
-# 
-# test <- replay_benchmark_run(sm_gaussian_candidates_noridge, "SM_m4_noridge_std", 5000, run_seed = 2009325658)
-# 
-# aggregate_final_benchmark(sm_gaussian_candidates_noridge, metric = "kl", across_runs_center = "mean", exclude_normalization_suspect = TRUE)
-# 
 
