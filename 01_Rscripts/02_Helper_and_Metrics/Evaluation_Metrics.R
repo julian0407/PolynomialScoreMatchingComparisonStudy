@@ -277,7 +277,7 @@ compute_pointwise_score_loss <- function(x_test,
 # ------------------------------------------------------------
 
 # Diagnostics of solver used during fitting the estimator
-extract_fit_diagnostics <- function(fit) {
+extract_fit_diagnostics <- function(fit, x_diag = NULL) {
   status <- NA_character_
   iterations <- NA_real_
   objective_value <- NA_real_
@@ -309,12 +309,62 @@ extract_fit_diagnostics <- function(fit) {
   
   # Save diagnostics in list.
   # Save the conditon number of the regularized matrix if existent else the unregularized 
+  # Save eigenvalues for log-concave check in multivariate estimator
+  lc_min_eigs <- numeric(0)
+  lc_diag_eval <- NULL
+  
+  if (inherits(fit, "score_matching_mv_fit") && !is.null(x_diag)) {
+    
+    x_diag <- as_obs_matrix(x_diag)
+    keep <- apply(x_diag, 1, function(row) all(is.finite(row)))
+    x_diag <- x_diag[keep, , drop = FALSE]
+    
+    if (nrow(x_diag) > 0L && ncol(x_diag) == fit$d) {
+      z_diag <- if (isTRUE(fit$scaling$standardize)) {
+        apply_scaling_matrix(x_diag, fit$scaling)$z
+      } else {
+        x_diag
+      }
+      
+      basis_obj <- list(
+        basis = fit$basis,
+        basis_names = fit$basis_names,
+        p = length(fit$basis),
+        d = fit$d,
+        m = fit$m
+      )
+      
+      hess_diag <- build_hessian_design_mv(z_diag, basis_obj)
+      lc_diag_eval <- logconcavity_violation_mv(
+        theta = fit$theta,
+        hess_design = hess_diag,
+        d = fit$d,
+        tol = fit$lc_settings$tol %||% 1e-8
+      )
+      
+      lc_min_eigs <- lc_diag_eval$min_eigenvalues
+    }
+  } else {
+    lc_diag_eval <- fit$lc_diagnostics
+    lc_min_eigs <- fit$lc_diagnostics$min_eigenvalues %||% numeric(0)
+  }
+  
   list(
     success = ifelse(is.na(converged), NA, converged),
     status = status,
     iterations = iterations,
     objective_value = objective_value,
-    condition_number = fit$diagnostics$kappa_reg %||% fit$diagnostics$kappa_raw %||% NA_real_
+    condition_number = fit$diagnostics$kappa_reg %||% fit$diagnostics$kappa_raw %||% NA_real_,
+    
+    lc_min_eigenvalue_raw = if (length(lc_min_eigs) > 0L) min(lc_min_eigs, na.rm = TRUE) else NA_real_,
+    lc_min_eigenvalue = if (length(lc_min_eigs) > 0L) min(min(lc_min_eigs, na.rm = TRUE), 0) else NA_real_,
+    lc_max_min_eigenvalue = if (length(lc_min_eigs) > 0L) max(lc_min_eigs, na.rm = TRUE) else NA_real_,
+    lc_mean_min_eigenvalue = if (length(lc_min_eigs) > 0L) mean(lc_min_eigs, na.rm = TRUE) else NA_real_,
+    lc_n_grid_points = length(lc_min_eigs),
+    lc_n_violated = lc_diag_eval$n_violated %||% NA_real_,
+    lc_max_violation = lc_diag_eval$max_violation %||% NA_real_,
+    lc_mean_violation = lc_diag_eval$mean_violation %||% NA_real_,
+    lc_min_eigenvalues = lc_min_eigs
   )
 }
 

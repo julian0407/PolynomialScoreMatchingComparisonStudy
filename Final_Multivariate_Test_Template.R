@@ -10,18 +10,12 @@
 #   - Gaussian with independent components, d = 2, 3, 4
 #   - Gaussian with dependent components,   d = 2, 3, 4
 #
-# Estimators per density configuration, exactly 6 total:
-#   - 3 SM estimators, one for each m = 1, 2, 3.
+# Estimators per density configuration, exactly 11 total:
+#   - 10 SM estimators, one for each m = 1, 2, 3, 4, 5.
 #     Each SM estimator is pairwise polynomial SM with ridge and
-#     grid log-concavity penalty switched on at the same time.
-#   - 2 KDE estimators: Hpi and Hns.
-#   - 1 smoothed log-concave MLE.
-#
-# Notes:
-#   - Multivariate SM has no density / KL evaluation in the current framework.
-#     Therefore KL columns are NA for SM, while score_loss is evaluated.
-#   - No combined wrapper object is created; each density configuration is
-#     called and saved as its own final benchmark object.
+#     (no) grid log-concavity penalty.
+#   - 1 KDE estimators: Hns.
+
 # ============================================================
 
 source("01_Rscripts/03_Test_Framework/Unified_Testing_Framework.R")
@@ -182,84 +176,88 @@ make_mle_specs_mv <- function(score_metric_args = score_metric_args_mv_default,
   )
 }
 
-
-make_sm_specs_mv_pairwise_ridge_grid_logconcave <- function(m_values = c(1, 2, 3, 4, 5),
-                                             ridge = 1e-4,
-                                             lc_grid_size = 5L,
-                                             lc_penalty = 1e4,
-                                             score_metric_args = score_metric_args_mv_default,
-                                             density_metric_args = density_metric_args_mv_default) {
-  lapply(m_values, function(m) {
-    list(
-      label = paste0("SM_pairwise_ridge_grid_logconcave_m", m),
-      method = "SM",
-      smoothed = FALSE,
-      fit_args = list(
-        m = m,
-        include_interactions = TRUE,
-        standardize = TRUE,
-        ridge = ridge,
-        log_concave = TRUE,
-        lc_method = "grid",
-        lc_grid_size = lc_grid_size,
-        lc_penalty = lc_penalty
+make_sm_specs_mv_lc_compare <- function(m_values = c(1, 2, 3, 4, 5),
+                                        ridge = 1e-2,
+                                        lc_grid_size = 5L,
+                                        lc_penalty = 1e2,
+                                        optim_grad = TRUE,
+                                        score_metric_args = score_metric_args_mv_trimmed,
+                                        density_metric_args = density_metric_args_mv_trimmed) {
+  specs <- list()
+  
+  for (m in m_values) {
+    specs <- c(specs, list(
+      list(
+        label = paste0("SM_no_logconcave_m", m),
+        method = "SM",
+        smoothed = FALSE,
+        fit_args = list(
+          m = m,
+          include_interactions = TRUE,
+          standardize = TRUE,
+          ridge = ridge,
+          log_concave = FALSE,
+          optim_grad = TRUE
+        ),
+        density_predict_args = list(),
+        score_predict_args = list(),
+        score_metric_args = score_metric_args,
+        density_metric_args = density_metric_args
       ),
-      density_predict_args = list(),
-      score_predict_args = list(),
-      score_metric_args = score_metric_args,
-      density_metric_args = density_metric_args
-    )
-  })
+      list(
+        label = paste0("SM_grid_logconcave_m", m),
+        method = "SM",
+        smoothed = FALSE,
+        fit_args = list(
+          m = m,
+          include_interactions = TRUE,
+          standardize = TRUE,
+          ridge = ridge,
+          log_concave = TRUE,
+          lc_method = "grid",
+          lc_grid_size = lc_grid_size,
+          lc_penalty = lc_penalty,
+          optim_grad = TRUE
+        ),
+        density_predict_args = list(),
+        score_predict_args = list(),
+        score_metric_args = score_metric_args,
+        density_metric_args = density_metric_args
+      )
+    ))
+  }
+  
+  specs
 }
 
-make_sm_specs_mv_all <- function(m_values = c(1, 2, 3),
-                                 ridge = 1e-4,
-                                 lc_grid_size = 5L,
-                                 lc_penalty = 1e4,
-                                 score_metric_args = score_metric_args_mv_default,
-                                 density_metric_args = density_metric_args_mv_default) {
-  # Exactly 3 SM estimators: for each m, pairwise + ridge + grid log-concavity.
-  make_sm_specs_mv_pairwise_ridge_grid_logconcave(
-    m_values = m_values,
-    ridge = ridge,
-    lc_grid_size = lc_grid_size,
-    lc_penalty = lc_penalty,
-    score_metric_args = score_metric_args,
-    density_metric_args = density_metric_args
-  )
-}
 
-make_estimator_specs_for_mv_truth <- function(kde_H_methods = c("Hpi", "Hns"),
+make_estimator_specs_for_mv_truth <- function(kde_H_methods = c("Hns"),
                                               kde_diagonal = FALSE,
-                                              sm_m_values = c(1, 2, 3),
-                                              sm_ridge = 1e-4,
+                                              sm_m_values = c(1, 2, 3, 4, 5),
+                                              sm_ridge = 1e-2,
                                               sm_lc_grid_size = 5L,
-                                              sm_lc_penalty = 1e4,
+                                              sm_lc_penalty = 1e2,
+                                              optim_grad = TRUE,
                                               score_metric_args = score_metric_args_mv_default,
                                               density_metric_args = density_metric_args_mv_default) {
   specs <- list()
 
   specs <- c(
-    make_sm_specs_mv_all(
+    make_sm_specs_mv_lc_compare(
       m_values = sm_m_values,
       ridge = sm_ridge,
       lc_grid_size = sm_lc_grid_size,
       lc_penalty = sm_lc_penalty,
+      optim_grad = optim_grad,
+      score_metric_args = score_metric_args,
+      density_metric_args = density_metric_args
+    ),
+    make_kde_specs_mv(
+      H_methods = kde_H_methods,
+      diagonal = kde_diagonal,
       score_metric_args = score_metric_args,
       density_metric_args = density_metric_args
     )
-    # ,
-    # make_kde_specs_mv(
-    #   H_methods = kde_H_methods,
-    #   diagonal = kde_diagonal,
-    #   score_metric_args = score_metric_args,
-    #   density_metric_args = density_metric_args
-    # )
-    # ,
-    # make_mle_specs_mv(
-    #   score_metric_args = score_metric_args,
-    #   density_metric_args = density_metric_args
-    # )
   )
 
   specs
@@ -303,10 +301,9 @@ run_mv_family_selection_benchmark <- function(truth,
 # ------------------------------------------------------------
 # (6) Final benchmark settings
 # ------------------------------------------------------------
-# Pool of exactly the 6 requested multivariate estimators per density:
-#   3 SM = pairwise + ridge + grid log-concavity for m = 1, 2, 3
-#   2 KDE = Hpi/Hns
-#   1 MLE = smoothed log-concave MLE
+# Pool of exactly the 11 requested multivariate estimators per density:
+#   10 SM = pairwise + ridge + (no) grid log-concavity for m = 1, 2, 3, 4, 5
+#   1 KDE = Hns
 
 score_metric_args_mv_trimmed <- list(
   central_trim = 0.05,
@@ -318,10 +315,11 @@ density_metric_args_mv_trimmed <- list(
 )
 
 estimator_specs <- make_estimator_specs_for_mv_truth(
-                                              sm_m_values = c(1, 2, 3, 4, 5),
-                                              sm_ridge = 1e-4,
-                                              sm_lc_grid_size = 5L,
-                                              sm_lc_penalty = 1e4,
+                                              kde_H_methods = c("Hns"),
+                                              sm_m_values = c(1, 5),
+                                              sm_ridge = 1e-2,
+                                              sm_lc_grid_size = 10L,
+                                              sm_lc_penalty = 1e2,
                                               score_metric_args = score_metric_args_mv_trimmed,
                                               density_metric_args = density_metric_args_mv_trimmed) 
 
@@ -331,67 +329,67 @@ estimator_specs <- make_estimator_specs_for_mv_truth(
 # ------------------------------------------------------------
 
 # d = 2: 3 combined SM + KDE Hpi/Hns + smoothed MLE.
-# res_compare_mv_gaussian_independent_d2 <- run_mv_family_selection_benchmark(
-#   truth = all_mv_truths$independent_d2,
-#   estimator_specs = estimator_specs,
-#   n_rep = 20,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "resultsMulti",
-#   save_name = "res_compare_mv_gaussian_independent_d2.rds"
-# )
-# 
-# res_compare_mv_gaussian_dependent_d2 <- run_mv_family_selection_benchmark(
-#   truth = all_mv_truths$dependent_d2,
-#   estimator_specs = estimator_specs,
-#   n_rep = 20,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "resultsMulti",
-#   save_name = "res_compare_mv_gaussian_dependent_d2.rds"
-# )
-# 
-# # d = 3: 3 combined SM + KDE Hpi/Hns + smoothed MLE.
-# res_compare_mv_gaussian_independent_d3 <- run_mv_family_selection_benchmark(
-#   truth = all_mv_truths$independent_d3,
-#   estimator_specs = estimator_specs,
-#   n_rep = 2,
-#   n_test = 50,
-#   save = TRUE,
-#   save_dir = "resultsMulti",
-#   save_name = "res_compare_mv_gaussian_independent_d3.rds"
-# )
-# 
-# res_compare_mv_gaussian_dependent_d3 <- run_mv_family_selection_benchmark(
-#   truth = all_mv_truths$dependent_d3,
-#   estimator_specs = estimator_specs,
-#   n_rep = 20,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "resultsMulti",
-#   save_name = "res_compare_mv_gaussian_dependent_d3.rds"
-# )
-# 
-# # d = 4: 3 combined SM + KDE Hpi/Hns + smoothed MLE.
-# res_compare_mv_gaussian_independent_d4 <- run_mv_family_selection_benchmark(
-#   truth = all_mv_truths$independent_d4,
-#   estimator_specs = estimator_specs,
-#   n_rep = 20,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "resultsMulti",
-#   save_name = "res_compare_mv_gaussian_independent_d4.rds"
-# )
-# 
-# res_compare_mv_gaussian_dependent_d4 <- run_mv_family_selection_benchmark(
-#   truth = all_mv_truths$dependent_d4,
-#   estimator_specs = estimator_specs,
-#   n_rep = 20,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "resultsMulti",
-#   save_name = "res_compare_mv_gaussian_dependent_d4.rds"
-# )
+res_compare_mv_gaussian_independent_d2 <- run_mv_family_selection_benchmark(
+  truth = all_mv_truths$independent_d2,
+  estimator_specs = estimator_specs,
+  n_rep = 20,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "resultsMulti",
+  save_name = "res_compare_mv_gaussian_independent_d2.rds"
+)
+
+res_compare_mv_gaussian_dependent_d2 <- run_mv_family_selection_benchmark(
+  truth = all_mv_truths$dependent_d2,
+  estimator_specs = estimator_specs,
+  n_rep = 20,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "resultsMulti",
+  save_name = "res_compare_mv_gaussian_dependent_d2.rds"
+)
+
+# d = 3: 3 combined SM + KDE Hpi/Hns + smoothed MLE.
+res_compare_mv_gaussian_independent_d3 <- run_mv_family_selection_benchmark(
+  truth = all_mv_truths$independent_d3,
+  estimator_specs = estimator_specs,
+  n_rep = 20,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "resultsMulti",
+  save_name = "res_compare_mv_gaussian_independent_d3.rds"
+)
+
+res_compare_mv_gaussian_dependent_d3 <- run_mv_family_selection_benchmark(
+  truth = all_mv_truths$dependent_d3,
+  estimator_specs = estimator_specs,
+  n_rep = 20,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "resultsMulti",
+  save_name = "res_compare_mv_gaussian_dependent_d3.rds"
+)
+
+# d = 4: 3 combined SM + KDE Hpi/Hns + smoothed MLE.
+res_compare_mv_gaussian_independent_d4 <- run_mv_family_selection_benchmark(
+  truth = all_mv_truths$independent_d4,
+  estimator_specs = estimator_specs,
+  n_rep = 20,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "resultsMulti",
+  save_name = "res_compare_mv_gaussian_independent_d4.rds"
+)
+
+res_compare_mv_gaussian_dependent_d4 <- run_mv_family_selection_benchmark(
+  truth = all_mv_truths$dependent_d4,
+  estimator_specs = estimator_specs,
+  n_rep = 20,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "resultsMulti",
+  save_name = "res_compare_mv_gaussian_dependent_d4.rds"
+)
 
 
 
@@ -434,24 +432,24 @@ mle_spec_only <- list(
 # Run benchmark
 # ------------------------------------------------------------
 
-res_test_mv_gaussian_d2_mle <- run_final_benchmark(
-  sample_sizes = c(50, 200, 500, 1000),
-  family = truth_d2$family,
-  estimator_specs = mle_spec_only,
-  r_sample = truth_d2$r_sample,
-  metrics = c("kl"),
-  n_rep = 5,
-  n_test = 50,
-  true_density = truth_d2$true_density,
-  true_logdensity = truth_d2$true_logdensity,
-  true_score = truth_d2$true_score,
-  truth_name = truth_d2$name,
-  seed = 123,
-  verbose = TRUE,
-  save = TRUE,
-  save_dir = "resultsMulti",
-  save_name = "test_mv_gaussian_d2_mle_nrep5_n1000.rds"
-)
+# res_test_mv_gaussian_d2_mle <- run_final_benchmark(
+#   sample_sizes = c(50, 200, 500, 1000),
+#   family = truth_d2$family,
+#   estimator_specs = mle_spec_only,
+#   r_sample = truth_d2$r_sample,
+#   metrics = c("kl"),
+#   n_rep = 5,
+#   n_test = 50,
+#   true_density = truth_d2$true_density,
+#   true_logdensity = truth_d2$true_logdensity,
+#   true_score = truth_d2$true_score,
+#   truth_name = truth_d2$name,
+#   seed = 123,
+#   verbose = TRUE,
+#   save = TRUE,
+#   save_dir = "resultsMulti",
+#   save_name = "test_mv_gaussian_d2_mle_nrep5_n1000.rds"
+# )
 
 
 
@@ -464,6 +462,7 @@ make_sm_specs_mv_debug_m45 <- function(m_values = c(4, 5),
                                        ridge = 1e-8,
                                        lc_grid_size = 5L,
                                        weak_lc_penalty = 1e2,
+                                       optim_grad = FALSE,
                                        score_metric_args = score_metric_args_mv_trimmed,
                                        density_metric_args = density_metric_args_mv_trimmed) {
   specs <- list()
@@ -498,7 +497,8 @@ make_sm_specs_mv_debug_m45 <- function(m_values = c(4, 5),
           log_concave = TRUE,
           lc_method = "grid",
           lc_grid_size = lc_grid_size,
-          lc_penalty = weak_lc_penalty
+          lc_penalty = weak_lc_penalty,
+          optim_grad = optim_grad
         ),
         density_predict_args = list(),
         score_predict_args = list(),
@@ -514,22 +514,42 @@ make_sm_specs_mv_debug_m45 <- function(m_values = c(4, 5),
 
 estimator_specs_debug_m45 <- make_sm_specs_mv_debug_m45(
   m_values = c(4, 5),
-  ridge = 1e-8,
-  lc_grid_size = 5L,
-  weak_lc_penalty = 1e2
+  ridge = 1e-2,
+  lc_grid_size = 10L,
+  weak_lc_penalty = 1e2,
+  optim_grad = TRUE
 )
 
+# 
+# res_debug_mv_gaussian_dependent_d2_m45 <- run_mv_family_selection_benchmark(
+#   truth = all_mv_truths$dependent_d2,
+#   estimator_specs = estimator_specs_debug_m45,
+#   sample_sizes = c(50, 100, 200, 500, 1000, 5000),
+#   metrics = c("score_loss"),
+#   n_rep = 5,
+#   n_test = 1000,
+#   seed = 123,
+#   verbose = TRUE,
+#   save = TRUE,
+#   save_dir = "resultsMulti",
+#   save_name = "debug_mv_gaussian_dependent_d2_m45_noLC_vs_weakGridLC.rds"
+# )
+# 
+# 
+# plot_final_benchmark(res_debug_mv_gaussian_dependent_d2_m45, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE,
+#                      exclude_normalization_suspect = FALSE)
+# 
+# plot_final_benchmark(res_debug_mv_gaussian_dependent_d2_m45, metric = "fit_time_sec", center = "mean", interval = "none",
+#                      exclude_normalization_suspect = FALSE, log_y = TRUE)
+# 
+# plot_final_benchmark(res_debug_mv_gaussian_dependent_d2_m45, metric = "lc_n_violated", center = "mean", interval = "none",
+#                      exclude_normalization_suspect = FALSE)
+# 
+# aggregate_final_benchmark(res_debug_mv_gaussian_dependent_d2_m45, metric = "lc_min_eigenvalue", across_runs_center = "mean",
+#                           exclude_normalization_suspect = FALSE)
+# 
+# 
 
-res_debug_mv_gaussian_dependent_d2_m45 <- run_mv_family_selection_benchmark(
-  truth = all_mv_truths$dependent_d2,
-  estimator_specs = estimator_specs_debug_m45,
-  sample_sizes = c(50, 100, 200, 500, 1000, 5000),
-  metrics = c("score_loss"),
-  n_rep = 20,
-  n_test = 3000,
-  seed = 123,
-  verbose = TRUE,
-  save = TRUE,
-  save_dir = "resultsMulti",
-  save_name = "debug_mv_gaussian_dependent_d2_m45_noLC_vs_weakGridLC.rds"
-)
+
+
+

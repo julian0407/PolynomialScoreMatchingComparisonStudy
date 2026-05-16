@@ -138,29 +138,77 @@ tail_probability_table(
 # ---------------------------------------------------------------
 # (3) Benchmarking SM in KL loss against log-concave MLE and KDE
 # ---------------------------------------------------------------
+renaming_Mixed <- c(
+  "SM_m1_ridge1e-02_std" = "SM1",
+  "SM_m2_ridge1e-02_std" = "SM2",
+  "SM_m3_ridge1e-02_std" = "SM3",
+  "SM_m4_ridge1e-02_std" = "SM4",
+  "SM_m5_ridge1e-02_std" = "SM5",
+  "SM_m6_ridge1e-02_std" = "SM6",
+  "KDE_bcv" = "KDE BCV",
+  "KDE_nrd0" = "KDE NRD0",
+  "KDE_SJ" = "KDE SJ",
+  "KDE_ucv" = "KDE UCV"
+)
+# --------------------------------------------------------------------
+# (3.1) Preselection of degree parameter in SM and bandwidth method KDE
+# --------------------------------------------------------------------
+# --- 1) Gaussian -----------------------------------------------------------
+sm_gaussian_candidates_ridge <- readRDS("02_Results/final_gaussian_sm_ridge.rds")
+kde_gaussian_candidates <- readRDS("02_Results/final_gaussian_kde.rds")
+plot_final_benchmark(sm_gaussian_candidates_ridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE, method_label_map = renaming_Mixed)
+plot_final_benchmark(kde_gaussian_candidates, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE, method_label_map = renaming_Mixed)
+# --- 2) Logistic -----------------------------------------------------------
+sm_logistic_candidates_ridge <- readRDS("02_Results/final_logistic_sm_ridge.rds")
+kde_logistic_candidates <- readRDS("02_Results/final_logistic_kde.rds")
+plot_final_benchmark(sm_logistic_candidates_ridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE,  method_label_map = renaming_Mixed)
+plot_final_benchmark(kde_logistic_candidates, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE, method_label_map = renaming_Mixed)
+# --- 3) Gumbel -------------------------------------------------------------
+sm_gumbel_candidates_ridge <- readRDS("02_Results/final_gumbel_sm_ridge.rds")
+kde_gumbel_candidates <- readRDS("02_Results/final_gumbel_kde.rds")
+plot_final_benchmark(sm_gumbel_candidates_ridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE,  method_label_map = renaming_Mixed)
+plot_final_benchmark(kde_gumbel_candidates, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE, method_label_map = renaming_Mixed)
+# --- 4) Laplace -------------------------------------------------------------
+sm_laplace_candidates_ridge <- readRDS("02_Results/final_laplace_sm_ridge.rds")
+kde_laplace_candidates <- readRDS("02_Results/final_laplace_kde.rds")
+plot_final_benchmark(sm_laplace_candidates_ridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE,  method_label_map = renaming_Mixed)
+plot_final_benchmark(kde_laplace_candidates, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE, method_label_map = renaming_Mixed)
 
+# --------------------------------------------------------------------
+# (3.1) Benchmarking
+# --------------------------------------------------------------------
+
+# --- 1) Gaussian -----------------------------------------------------------
+gaussian_mixed <- readRDS("02_Results/final_gaussian_mixed.rds")
+plot_final_benchmark(gaussian_mixed, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = TRUE, method_label_map = renaming_Mixed)
 
 # --- 2) Logistic -----------------------------------------------------------
 
-sm_logistic_candidates_noridge <- readRDS("02_Results/final_logistic_sm_noridge.rds")
-sm_logistic_candidates_ridge <- readRDS("02_Results/final_logistic_sm_ridge.rds")
-
-plot_final_benchmark(sm_logistic_candidates_noridge, metric = "score_loss_central", center = "mean", interval = "none", log_y = TRUE,
-                     exclude_normalization_suspect = FALSE, method_label_map = renaming)
-
-plot_final_benchmark(sm_logistic_candidates_ridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
-                     exclude_normalization_suspect = TRUE, method_label_map = renaming)
+logistic_mixed <- readRDS("02_Results/final_logistic_mixed.rds")
+plot_final_benchmark(logistic_mixed, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = TRUE, method_label_map = renaming_Mixed)
 
 # --- 3) Gumbel -------------------------------------------------------------
+gumbel_mixed <- readRDS("02_Results/final_gumbel_mixed.rds")
+plot_final_benchmark(gumbel_mixed, metric = "score_loss_central", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE, method_label_map = renaming_Mixed)
 
-sm_gumbel_candidates_noridge <- readRDS("02_Results/final_gumbel_sm_noridge.rds")
-sm_gumbel_candidates_ridge <- readRDS("02_Results/final_gumbel_sm_ridge.rds")
+# --- 4) Laplace -------------------------------------------------------------
+laplace_mixed <- readRDS("02_Results/final_laplace_mixed.rds")
+plot_final_benchmark(laplace_mixed, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE, method_label_map = renaming_Mixed)
 
-plot_final_benchmark(sm_gumbel_candidates_noridge, metric = "score_loss_central", center = "mean", interval = "none", log_y = TRUE,
-                     exclude_normalization_suspect = FALSE, method_label_map = renaming)
 
-plot_final_benchmark(sm_gumbel_candidates_ridge, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
-                     exclude_normalization_suspect = FALSE, method_label_map = renaming)
+
 
 
 
@@ -168,10 +216,8 @@ plot_final_benchmark(sm_gumbel_candidates_ridge, metric = "kl", center = "mean",
 # (4) Multivaraiate Tests on Gaussian density
 # ------------------------------------------------------------
 
-
-
-plot_final_benchmark(res_debug_mv_gaussian_dependent_d2_m45, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE,
-                     exclude_normalization_suspect = FALSE)
+# plot_final_benchmark(res_debug_mv_gaussian_dependent_d2_m45, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE,
+#                     exclude_normalization_suspect = FALSE)
 
 
 sm_gaussian_cmultivariate_d2 <- readRDS("02_Results/Multivariate/res_compare_mv_gaussian_independent_d2.rds")
@@ -179,20 +225,53 @@ sm_gaussian_cmultivariate_d3 <- readRDS("02_Results/Multivariate/res_compare_mv_
 sm_gaussian_cmultivariate_d2_dependent <- readRDS("02_Results/Multivariate/res_compare_mv_gaussian_dependent_d2.rds")
 sm_gaussian_cmultivariate_d3_dependent <- readRDS("02_Results/Multivariate/res_compare_mv_gaussian_dependent_d3.rds")
 
+only_show_sm_methods <- c(
+  "SM_grid_logconcave_m1",
+  "SM_no_logconcave_m1",
+  "SM_grid_logconcave_m2",
+  "SM_no_logconcave_m2",
+  "SM_grid_logconcave_m5",
+  "SM_no_logconcave_m5"
+)
+
+rename_sm_methods_multi <- c(
+  "SM_grid_logconcave_m1" = "SM1 Grid",
+  "SM_no_logconcave_m1" = "SM1 No Grid" ,
+  "SM_grid_logconcave_m2" = "SM2 Grid",
+  "SM_no_logconcave_m2" = "SM2 No Grid",
+  "SM_grid_logconcave_m5" = "SM5 Grid",
+  "SM_no_logconcave_m5" = "SM5 No Grid"
+)
+
+# Convergence
 plot_final_benchmark(sm_gaussian_cmultivariate_d2, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE,
-                     exclude_normalization_suspect = FALSE)
+                     exclude_normalization_suspect = FALSE, keep_method_labels = only_show_sm_methods, method_label_map = rename_sm_methods_multi)
 plot_final_benchmark(sm_gaussian_cmultivariate_d3, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE,
-                     exclude_normalization_suspect = FALSE)
+                     exclude_normalization_suspect = FALSE,  keep_method_labels = only_show_sm_methods, method_label_map = rename_sm_methods_multi)
 plot_final_benchmark(sm_gaussian_cmultivariate_d2_dependent, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE,
-                     exclude_normalization_suspect = FALSE)
+                     exclude_normalization_suspect = FALSE, keep_method_labels = only_show_sm_methods, method_label_map = rename_sm_methods_multi)
 plot_final_benchmark(sm_gaussian_cmultivariate_d3_dependent, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE,  keep_method_labels = only_show_sm_methods, method_label_map = rename_sm_methods_multi)
+
+#
+aggregate_final_benchmark(sm_gaussian_cmultivariate_d3_dependent, metric = "lc_n_violated", across_runs_center = "mean",
+                          exclude_normalization_suspect = FALSE)
+aggregate_final_benchmark(sm_gaussian_cmultivariate_d3_dependent, metric = "lc_min_eigenvalue", across_runs_center = "mean",
+                          exclude_normalization_suspect = FALSE)
+
+# Runtime
+plot_final_benchmark(sm_gaussian_cmultivariate_d3_dependent, metric = "fit_time_sec", center = "median", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE)
+
+plot_final_benchmark(sm_gaussian_cmultivariate_d2_dependent, metric = "fit_time_sec", center = "mean", interval = "none", log_y = TRUE,
                      exclude_normalization_suspect = FALSE)
 
 
-plot_final_benchmark(sm_gaussian_cmultivariate_d3_dependent, metric = "fit_time_sec", center = "mean", interval = "none", log_y = TRUE,
-                     exclude_normalization_suspect = FALSE)
+
 aggregate_final_benchmark(sm_gaussian_cmultivariate_d3, metric = "fit_time_sec", across_runs_center = "mean",
                           exclude_normalization_suspect = FALSE)
+
+
 
 aggregate_final_benchmark(sm_gaussian_cmultivariate_d3, metric = "iterations", across_runs_center = "mean",
                           exclude_normalization_suspect = FALSE)

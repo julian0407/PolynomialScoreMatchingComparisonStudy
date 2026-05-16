@@ -24,7 +24,6 @@ safe_sd <- function(x) {
 # Initilaize and apply scaling on some data
 scale_vector_1d <- function(x) {
   # Get numeric vector from input x
-  # TODO: Check why necessary 
   x <- as.numeric(x)
   # Count number and proportion of infinite entries
   c_inf <- sum(is.infinite(x))
@@ -158,7 +157,6 @@ h_tanh_sq_prime <- function(z, tau = 1) {
   u <- abs(z) / tau
   sech2 <- 1 / cosh(u)^2
   out <- 2 * tanh(u) * sech2 * sign(z) / tau
-  # TODO: Ceck this and motivate this weighting function
   # at z=0 derivative is not smooth because of |z| ->
   # choose zero in this case
   out[z == 0] <- 0

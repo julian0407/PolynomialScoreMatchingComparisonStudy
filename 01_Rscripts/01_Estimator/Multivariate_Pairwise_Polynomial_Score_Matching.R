@@ -363,10 +363,13 @@ logconcavity_violation_mv <- function(theta, hess_design, d, tol = 1e-8) {
   # Return violations and meta data to analyze
   list(
     min_eigenvalues = min_eigs,
+    min_eigenvalue = min(min_eigs),
+    max_eigenvalue = max(min_eigs),
     violations = violations,
     max_violation = max(violations),
     mean_violation = mean(violations),
-    n_violated = sum(violations > 0)
+    n_violated = sum(violations > 0),
+    is_log_concave = all(min_eigs >= -tol)
   )
 }
 
@@ -393,6 +396,69 @@ penalized_sm_objective_mv <- function(theta,
   base_obj + pen
 }
 
+# Simple gradient to add in BFGS method to increase efficiency
+penalized_sm_gradient_simple <- function(theta,
+                                         K_reg,
+                                         ell,
+                                         ...) {
+  args <- list(...)
+  
+  # 1. Normaler Score-Matching-Gradient
+  grad <- as.numeric(K_reg %*% theta - ell)
+  
+  # 2. Falls keine log-concavity Infos übergeben wurden: fertig
+  if (is.null(args$hess_design) ||
+      is.null(args$d) ||
+      is.null(args$penalty) ||
+      args$penalty <= 0) {
+    return(grad)
+  }
+  
+  hess_design <- args$hess_design
+  d <- args$d
+  penalty <- args$penalty
+  tol <- if (!is.null(args$tol)) args$tol else 1e-8
+  
+  n_grid <- nrow(hess_design[[1]][[1]])
+  p <- length(theta)
+  
+  # 3. Hessians H_i(theta) auf dem log-concavity Grid bauen
+  H_arr <- hessian_array_from_theta_mv(theta, hess_design, d = d)
+  
+  # 4. Für jeden Gridpunkt prüfen, ob kleinster Eigenwert verletzt ist
+  for (i in seq_len(n_grid)) {
+    H_i <- H_arr[i, , ]
+    H_i <- 0.5 * (H_i + t(H_i))
+    
+    eig <- eigen(H_i, symmetric = TRUE)
+    lambda_min <- min(eig$values)
+    
+    violation <- max(-lambda_min - tol, 0)
+    
+    if (violation > 0) {
+      u <- eig$vectors[, which.min(eig$values)]
+      
+      # 5. Gradient der Verletzung nach jedem theta_j
+      for (j in seq_len(p)) {
+        A_j <- matrix(0, d, d)
+        
+        for (a in seq_len(d)) {
+          for (b in seq_len(d)) {
+            A_j[a, b] <- hess_design[[a]][[b]][i, j]
+          }
+        }
+        
+        d_lambda <- as.numeric(t(u) %*% A_j %*% u)
+        
+        grad[j] <- grad[j] -
+          (2 * penalty / n_grid) * violation * d_lambda
+      }
+    }
+  }
+  
+  grad
+}
+
 # ------------------------------------------------------------
 # (5) Fit
 #   log_concave = FALSE/TRUE
@@ -413,6 +479,7 @@ fit_score_matching_mv <- function(x,
                                         lc_tol = 1e-8,
                                         lc_optim_method = c("BFGS"),
                                         lc_control = list(maxit = 500),
+                                        optim_grad = FALSE,
                                         lc_seed = NULL,
                                         lc_m2_eps = 1e-8) {
   # check if input parameters are valid
@@ -457,6 +524,26 @@ fit_score_matching_mv <- function(x,
   
   # Build structure D and laplacian
   design <- build_sm_design_mv(z, basis_obj)
+  
+  # Column scaling for numerical stability.
+  # We optimize in the scaled basis phi_j / scale_j and later transform
+  # theta_scaled back to theta_original = theta_scaled / scale_j.
+  col_scale <- rep(1, basis_obj$p)
+  
+  for (j in seq_len(basis_obj$p)) {
+    vals <- c(
+      unlist(lapply(design$D, function(Dk) Dk[, j])),
+      design$Lap[, j]
+    )
+    s_j <- stats::sd(vals)
+    if (!is.finite(s_j) || s_j <= 0) s_j <- 1
+    col_scale[j] <- max(s_j, 1e-12)
+  }
+  
+  for (k in seq_len(basis_obj$d)) {
+    design$D[[k]] <- sweep(design$D[[k]], 2, col_scale, FUN = "/")
+  }
+  design$Lap <- sweep(design$Lap, 2, col_scale, FUN = "/")
   
   # Initialze matrix K as empty matrix
   K <- matrix(0, nrow = basis_obj$p, ncol = basis_obj$p)
@@ -510,20 +597,49 @@ fit_score_matching_mv <- function(x,
     # Build Hessian_design on grid points
     lc_hess_design <- build_hessian_design_mv(lc_points, basis_obj)
     
+
+    for (a in seq_len(basis_obj$d)) {
+      for (b in seq_len(basis_obj$d)) {
+        lc_hess_design[[a]][[b]] <- sweep(
+          lc_hess_design[[a]][[b]],
+          2,
+          col_scale,
+          FUN = "/"
+        )
+      }
+    }
+    
+    
     # Iteratively minimize score matching loss with additional
     # Hessian-based penalty enforcing log-concavity
-    opt <- optim(
-      par = theta_init,
-      fn = penalized_sm_objective_mv,
-      K_reg = K_reg,
-      ell = ell,
-      hess_design = lc_hess_design,
-      d = basis_obj$d,
-      penalty = lc_penalty,
-      tol = lc_tol,
-      method = lc_optim_method,
-      control = lc_control
-    )
+    if (optim_grad) {
+      opt <- optim(
+        par = theta_init,
+        fn = penalized_sm_objective_mv,
+        gr = penalized_sm_gradient_simple,
+        K_reg = K_reg,
+        ell = ell,
+        hess_design = lc_hess_design,
+        d = basis_obj$d,
+        penalty = lc_penalty,
+        tol = lc_tol,
+        method = lc_optim_method,
+        control = lc_control
+      )
+    } else {
+      opt <- optim(
+        par = theta_init,
+        fn = penalized_sm_objective_mv,
+        K_reg = K_reg,
+        ell = ell,
+        hess_design = lc_hess_design,
+        d = basis_obj$d,
+        penalty = lc_penalty,
+        tol = lc_tol,
+        method = lc_optim_method,
+        control = lc_control
+      )
+    }
     
     # Update theta
     theta <- as.numeric(opt$par)
@@ -538,12 +654,22 @@ fit_score_matching_mv <- function(x,
       method = lc_optim_method
     )
   }
+  
+  # Reverse column scaling
+  theta_scaled <- theta
+  theta_init_scaled <- theta_init
+  
+  theta <- theta_scaled / col_scale
+  theta_init <- theta_init_scaled / col_scale
 
   # Return fitting and optimization details
   structure(
     list(
       theta = theta,
       theta_unconstrained = theta_init,
+      theta_scaled = theta_scaled,
+      theta_unconstrained_scaled = theta_init_scaled,
+      column_scaling = list(scale_vec = col_scale),
       scaling = scaling,
       basis = basis_obj$basis,
       basis_names = basis_obj$basis_names,

@@ -267,7 +267,17 @@ run_one_final_experiment <- function(n,
     normalization_suspect_1_0 = NA,
     normalization_loghat_finite_share = NA_real_,
     normalization_median_kl_shift = NA_real_,
-    stringsAsFactors = FALSE
+    stringsAsFactors = FALSE,
+    lc_min_eigenvalue = NA_real_,
+    lc_min_eigenvalue_raw = NA_real_,
+    lc_max_min_eigenvalue = NA_real_,
+    lc_mean_min_eigenvalue = NA_real_,
+    lc_n_grid_points = NA_real_,
+    lc_n_violated = NA_real_,
+    lc_max_violation = NA_real_,
+    lc_mean_violation = NA_real_,
+    lc_is_log_concave_tol0 = NA,
+    lc_min_eigenvalues = I(list(numeric(0)))
   )
   for (nm in metric_columns) base_row[[nm]] <- NA_real_
 
@@ -295,7 +305,10 @@ run_one_final_experiment <- function(n,
   
   # create diagnostic object from fit
   diags <- tryCatch(
-    extract_fit_diagnostics(fit),
+    extract_fit_diagnostics(
+      fit,
+      x_diag = if (identical(family, "multivariate")) x_test else NULL
+    ),
     error = function(e) list(
       success = TRUE,
       status = paste("diagnostics_error:", conditionMessage(e)),
@@ -456,6 +469,22 @@ run_one_final_experiment <- function(n,
   base_row$iterations <- diags$iterations %||% NA_real_
   base_row$objective_value <- diags$objective_value %||% NA_real_
   base_row$condition_number <- diags$condition_number %||% NA_real_
+  base_row$lc_min_eigenvalue <- diags$lc_min_eigenvalue %||% NA_real_
+  base_row$lc_min_eigenvalue_raw <- diags$lc_min_eigenvalue_raw %||% NA_real_
+  base_row$lc_max_min_eigenvalue <- diags$lc_max_min_eigenvalue %||% NA_real_
+  base_row$lc_mean_min_eigenvalue <- diags$lc_mean_min_eigenvalue %||% NA_real_
+  base_row$lc_n_grid_points <- diags$lc_n_grid_points %||% NA_real_
+  base_row$lc_n_violated <- diags$lc_n_violated %||% NA_real_
+  base_row$lc_max_violation <- diags$lc_max_violation %||% NA_real_
+  base_row$lc_mean_violation <- diags$lc_mean_violation %||% NA_real_
+  
+  base_row$lc_is_log_concave_tol0 <- if (is.finite(base_row$lc_min_eigenvalue)) {
+    base_row$lc_min_eigenvalue >= 0
+  } else {
+    NA
+  }
+  
+  base_row$lc_min_eigenvalues <- I(list(diags$lc_min_eigenvalues %||% numeric(0)))
   # save evaluated metrics
   for (nm in names(metric_values)) base_row[[nm]] <- metric_values[[nm]]
   base_row
@@ -1081,6 +1110,8 @@ plot_final_benchmark <- function(obj,
   center_label <- if (center == "mean") "Average" else "Median"
   axis_label <- paste(center_label, metric_label)
   plot_title <- paste(axis_label, "by Sample Size")
+  # Replace Score Loss with Score MSE
+  plot_title <- gsub("Score Loss", "Score MSE", plot_title)
   # get data
   agg$y <- agg[[center]]
   # optional iqr band

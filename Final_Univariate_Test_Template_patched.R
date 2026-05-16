@@ -566,21 +566,21 @@ initial_best_guess <- list(
     sm2 = "SM_m2_noridge_std"
   ),
   logistic = list(
-    kde = "KDE_ucv",
+    kde = "KDE_bcv",
     mle = "MLE_smoothed",
     sm1 = "SM_m2_ridge1e-02_std",
     sm2 = "SM_m3_ridge1e-02_std",
     sm3 = "SM_m4_ridge1e-02_std"
   ),
   gumbel = list(
-    kde = "KDE_ucv",
+    kde = "KDE_nrd0",
     mle = "MLE_smoothed",
     sm1 = "SM_m2_ridge1e-02_std",
     sm2 = "SM_m3_ridge1e-02_std",
     sm3 = "SM_m4_ridge1e-02_std"
   ),
   laplace = list(
-    kde = "KDE_SJ",
+    kde = "KDE_nrd0",
     mle = "MLE_unsmoothed",
     sm1 = "SM_m2_ridge1e-02_std",
     sm2 = "SM_m3_ridge1e-02_std",
@@ -637,7 +637,8 @@ make_manual_compare_specs <- function(truth_name) {
   guess <- initial_best_guess[[truth_name]]
   if (is.null(guess)) stop("Unknown truth_name: ", truth_name)
   
-  get_specs_by_labels(c(guess$kde, guess$mle, guess$sm1, guess$sm2))
+  labels <- unlist(guess, use.names = FALSE)
+  get_specs_by_labels(labels)
 }
 
 # ------------------------------------------------------------
@@ -649,14 +650,14 @@ manual_compare_gumbel  <- make_manual_compare_specs("gumbel")
 manual_compare_laplace <- make_manual_compare_specs("laplace")
 manual_compare_student <- make_manual_compare_specs("student")
 
-# res_compare_gaussian <- run_family_selection_benchmark(
-#   truth = truth_gaussian,
-#   estimator_specs = manual_compare_gaussian,
-#   n_rep = 100,
-#   n_test = 5000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+res_compare_gaussian <- run_family_selection_benchmark(
+  truth = truth_gaussian,
+  estimator_specs = manual_compare_gaussian,
+  n_rep = 100,
+  n_test = 5000,
+  save = TRUE,
+  save_dir = "results"
+)
 
 res_compare_logistic <- run_family_selection_benchmark(
   truth = truth_logistic,
@@ -685,6 +686,7 @@ res_compare_laplace <- run_family_selection_benchmark(
   save = TRUE,
   save_dir = "results"
 )
+
 
 # res_compare_student <- run_family_selection_benchmark(
 #   truth = truth_student,
