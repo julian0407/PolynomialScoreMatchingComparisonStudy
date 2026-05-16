@@ -1108,10 +1108,12 @@ plot_final_benchmark <- function(obj,
   # Build title from data in readable name
   metric_label <- tools::toTitleCase(gsub("_", " ", metric))
   center_label <- if (center == "mean") "Average" else "Median"
+  # Replace Score Loss with Score MSE
+  metric_label <- gsub("Score Loss", "Score MSE", metric_label)
+  # Replace KL with EKL
+  metric_label <- gsub("Kl", "EKL", metric_label)
   axis_label <- paste(center_label, metric_label)
   plot_title <- paste(axis_label, "by Sample Size")
-  # Replace Score Loss with Score MSE
-  plot_title <- gsub("Score Loss", "Score MSE", plot_title)
   # get data
   agg$y <- agg[[center]]
   # optional iqr band
