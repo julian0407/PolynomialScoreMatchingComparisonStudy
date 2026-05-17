@@ -316,9 +316,9 @@ density_metric_args_mv_trimmed <- list(
 
 estimator_specs <- make_estimator_specs_for_mv_truth(
                                               kde_H_methods = c("Hns"),
-                                              sm_m_values = c(1, 5),
+                                              sm_m_values = c(1,2,3,4,5),
                                               sm_ridge = 1e-2,
-                                              sm_lc_grid_size = 10L,
+                                              sm_lc_grid_size = 5L,
                                               sm_lc_penalty = 1e2,
                                               score_metric_args = score_metric_args_mv_trimmed,
                                               density_metric_args = density_metric_args_mv_trimmed) 
@@ -392,17 +392,27 @@ res_compare_mv_gaussian_dependent_d4 <- run_mv_family_selection_benchmark(
 )
 
 
-
-
-
-
-
-
-
+# ------------------------------------------------------------
+# (8) Short comparison Test to log-concave MLE with d = 2
+# ------------------------------------------------------------
 truth_d2 <- make_truth_gaussian_mv(
   d = 2,
   scenario = "independent",
   mean = c(0, 0),
+  rho = 0.6
+)
+
+truth_d3 <- make_truth_gaussian_mv(
+  d = 3,
+  scenario = "independent",
+  mean = c(0, 0, 0),
+  rho = 0.6
+)
+
+truth_d4 <- make_truth_gaussian_mv(
+  d = 4,
+  scenario = "independent",
+  mean = c(0, 0, 0, 0),
   rho = 0.6
 )
 
@@ -432,123 +442,62 @@ mle_spec_only <- list(
 # Run benchmark
 # ------------------------------------------------------------
 
-# res_test_mv_gaussian_d2_mle <- run_final_benchmark(
-#   sample_sizes = c(50, 200, 500, 1000),
-#   family = truth_d2$family,
-#   estimator_specs = mle_spec_only,
-#   r_sample = truth_d2$r_sample,
-#   metrics = c("kl"),
-#   n_rep = 5,
-#   n_test = 50,
-#   true_density = truth_d2$true_density,
-#   true_logdensity = truth_d2$true_logdensity,
-#   true_score = truth_d2$true_score,
-#   truth_name = truth_d2$name,
-#   seed = 123,
-#   verbose = TRUE,
-#   save = TRUE,
-#   save_dir = "resultsMulti",
-#   save_name = "test_mv_gaussian_d2_mle_nrep5_n1000.rds"
-# )
-
-
-
-
-# ------------------------------------------------------------
-# Debug test: m = 4, 5 without log-concavity vs weak grid penalty
-# ------------------------------------------------------------
-
-make_sm_specs_mv_debug_m45 <- function(m_values = c(4, 5),
-                                       ridge = 1e-8,
-                                       lc_grid_size = 5L,
-                                       weak_lc_penalty = 1e2,
-                                       optim_grad = FALSE,
-                                       score_metric_args = score_metric_args_mv_trimmed,
-                                       density_metric_args = density_metric_args_mv_trimmed) {
-  specs <- list()
-  
-  for (m in m_values) {
-    specs <- c(specs, list(
-      list(
-        label = paste0("SM_pairwise_no_logconcave_m", m),
-        method = "SM",
-        smoothed = FALSE,
-        fit_args = list(
-          m = m,
-          include_interactions = TRUE,
-          standardize = TRUE,
-          ridge = ridge,
-          log_concave = FALSE
-        ),
-        density_predict_args = list(),
-        score_predict_args = list(),
-        score_metric_args = score_metric_args,
-        density_metric_args = density_metric_args
-      ),
-      list(
-        label = paste0("SM_pairwise_weak_grid_logconcave_m", m),
-        method = "SM",
-        smoothed = FALSE,
-        fit_args = list(
-          m = m,
-          include_interactions = TRUE,
-          standardize = TRUE,
-          ridge = ridge,
-          log_concave = TRUE,
-          lc_method = "grid",
-          lc_grid_size = lc_grid_size,
-          lc_penalty = weak_lc_penalty,
-          optim_grad = optim_grad
-        ),
-        density_predict_args = list(),
-        score_predict_args = list(),
-        score_metric_args = score_metric_args,
-        density_metric_args = density_metric_args
-      )
-    ))
-  }
-  
-  specs
-}
-
-
-estimator_specs_debug_m45 <- make_sm_specs_mv_debug_m45(
-  m_values = c(4, 5),
-  ridge = 1e-2,
-  lc_grid_size = 10L,
-  weak_lc_penalty = 1e2,
-  optim_grad = TRUE
+res_test_mv_gaussian_d2_mle <- run_final_benchmark(
+  sample_sizes = c(50, 200, 500, 1000, 5000),
+  family = truth_d2$family,
+  estimator_specs = mle_spec_only,
+  r_sample = truth_d2$r_sample,
+  metrics = c("kl"),
+  n_rep = 1,
+  n_test = 50,
+  true_density = truth_d2$true_density,
+  true_logdensity = truth_d2$true_logdensity,
+  true_score = truth_d2$true_score,
+  truth_name = truth_d2$name,
+  seed = 123,
+  verbose = TRUE,
+  save = TRUE,
+  save_dir = "resultsMulti",
+  save_name = "test_mv_gaussian_d2_mle_nrep5_n1000.rds"
 )
 
-# 
-# res_debug_mv_gaussian_dependent_d2_m45 <- run_mv_family_selection_benchmark(
-#   truth = all_mv_truths$dependent_d2,
-#   estimator_specs = estimator_specs_debug_m45,
-#   sample_sizes = c(50, 100, 200, 500, 1000, 5000),
-#   metrics = c("score_loss"),
-#   n_rep = 5,
-#   n_test = 1000,
-#   seed = 123,
-#   verbose = TRUE,
-#   save = TRUE,
-#   save_dir = "resultsMulti",
-#   save_name = "debug_mv_gaussian_dependent_d2_m45_noLC_vs_weakGridLC.rds"
-# )
-# 
-# 
-# plot_final_benchmark(res_debug_mv_gaussian_dependent_d2_m45, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE,
-#                      exclude_normalization_suspect = FALSE)
-# 
-# plot_final_benchmark(res_debug_mv_gaussian_dependent_d2_m45, metric = "fit_time_sec", center = "mean", interval = "none",
-#                      exclude_normalization_suspect = FALSE, log_y = TRUE)
-# 
-# plot_final_benchmark(res_debug_mv_gaussian_dependent_d2_m45, metric = "lc_n_violated", center = "mean", interval = "none",
-#                      exclude_normalization_suspect = FALSE)
-# 
-# aggregate_final_benchmark(res_debug_mv_gaussian_dependent_d2_m45, metric = "lc_min_eigenvalue", across_runs_center = "mean",
-#                           exclude_normalization_suspect = FALSE)
-# 
-# 
+res_test_mv_gaussian_d3_mle <- run_final_benchmark(
+  sample_sizes = c(50, 200, 500, 1000),
+  family = truth_d3$family,
+  estimator_specs = mle_spec_only,
+  r_sample = truth_d3$r_sample,
+  metrics = c("kl"),
+  n_rep = 1,
+  n_test = 50,
+  true_density = truth_d3$true_density,
+  true_logdensity = truth_d3$true_logdensity,
+  true_score = truth_d3$true_score,
+  truth_name = truth_d3$name,
+  seed = 123,
+  verbose = TRUE,
+  save = TRUE,
+  save_dir = "resultsMulti",
+  save_name = "test_mv_gaussian_d3_mle_nrep5_n1000.rds"
+)
+
+res_test_mv_gaussian_d4_mle <- run_final_benchmark(
+  sample_sizes = c(50, 200, 500, 1000),
+  family = truth_d4$family,
+  estimator_specs = mle_spec_only,
+  r_sample = truth_d4$r_sample,
+  metrics = c("kl"),
+  n_rep = 1,
+  n_test = 50,
+  true_density = truth_d4$true_density,
+  true_logdensity = truth_d4$true_logdensity,
+  true_score = truth_d4$true_score,
+  truth_name = truth_d4$name,
+  seed = 123,
+  verbose = TRUE,
+  save = TRUE,
+  save_dir = "resultsMulti",
+  save_name = "test_mv_gaussian_d4_mle_nrep5_n1000.rds"
+)
 
 
 

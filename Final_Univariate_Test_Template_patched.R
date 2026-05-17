@@ -290,268 +290,268 @@ density_metric_args_trimmed <- list(
 
 # --- 1) Gaussian -----------------------------------------------------------
 
-# kde_gaussian_candidates <- run_family_selection_benchmark(
-#   truth = truth_gaussian,
-#   estimator_specs = make_kde_specs_1d(
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# 
-# mle_gaussian_candidates <- run_family_selection_benchmark(
-#   truth = truth_gaussian,
-#   estimator_specs = make_mle_specs_1d(
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+kde_gaussian_candidates <- run_family_selection_benchmark(
+  truth = truth_gaussian,
+  estimator_specs = make_kde_specs_1d(
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
 
-# sm_gaussian_candidates2_noridge <- run_family_selection_benchmark(
-#   truth = truth_gaussian,
-#   estimator_specs = make_sm_specs_1d_noridge(
-#     m_values = c(1, 2, 3, 4, 5, 6),
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# 
-# sm_gaussian_candidates2_ridge <- run_family_selection_benchmark(
-#   truth = truth_gaussian,
-#   estimator_specs = make_sm_specs_1d_ridge(
-#     m_values = c(1, 2, 3, 4, 5, 6),
-#     ridge = 1e-2,
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+mle_gaussian_candidates <- run_family_selection_benchmark(
+  truth = truth_gaussian,
+  estimator_specs = make_mle_specs_1d(
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
+
+sm_gaussian_candidates2_noridge <- run_family_selection_benchmark(
+  truth = truth_gaussian,
+  estimator_specs = make_sm_specs_1d_noridge(
+    m_values = c(1, 2, 3, 4, 5, 6),
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
+
+sm_gaussian_candidates2_ridge <- run_family_selection_benchmark(
+  truth = truth_gaussian,
+  estimator_specs = make_sm_specs_1d_ridge(
+    m_values = c(1, 2, 3, 4, 5, 6),
+    ridge = 1e-2,
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
 
 # --- 2) Logistic -----------------------------------------------------------
 
-# kde_logistic_candidates <- run_family_selection_benchmark(
-#   truth = truth_logistic,
-#   estimator_specs = make_kde_specs_1d(
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# 
-# mle_logistic_candidates <- run_family_selection_benchmark(
-#   truth = truth_logistic,
-#   estimator_specs = make_mle_specs_1d(
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+kde_logistic_candidates <- run_family_selection_benchmark(
+  truth = truth_logistic,
+  estimator_specs = make_kde_specs_1d(
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
 
-# sm_logistic_candidates_noridge <- run_family_selection_benchmark(
-#   truth = truth_logistic,
-#   estimator_specs = make_sm_specs_1d_noridge(
-#     m_values = c(1, 2, 3, 4, 5, 6),
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# 
-# sm_logistic_candidates_ridge <- run_family_selection_benchmark(
-#   truth = truth_logistic,
-#   estimator_specs = make_sm_specs_1d_ridge(
-#     m_values = c(1, 2, 3, 4, 5, 6),
-#     ridge = 1e-2,
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+mle_logistic_candidates <- run_family_selection_benchmark(
+  truth = truth_logistic,
+  estimator_specs = make_mle_specs_1d(
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
+
+sm_logistic_candidates_noridge <- run_family_selection_benchmark(
+  truth = truth_logistic,
+  estimator_specs = make_sm_specs_1d_noridge(
+    m_values = c(1, 2, 3, 4, 5, 6),
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
+
+sm_logistic_candidates_ridge <- run_family_selection_benchmark(
+  truth = truth_logistic,
+  estimator_specs = make_sm_specs_1d_ridge(
+    m_values = c(1, 2, 3, 4, 5, 6),
+    ridge = 1e-2,
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
 
 # --- 3) Gumbel -------------------------------------------------------------
 
-# kde_gumbel_candidates <- run_family_selection_benchmark(
-#   truth = truth_gumbel,
-#   estimator_specs = make_kde_specs_1d(
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# 
-# mle_gumbel_candidates <- run_family_selection_benchmark(
-#   truth = truth_gumbel,
-#   estimator_specs = make_mle_specs_1d(
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+kde_gumbel_candidates <- run_family_selection_benchmark(
+  truth = truth_gumbel,
+  estimator_specs = make_kde_specs_1d(
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
 
-# sm_gumbel_candidates_noridge <- run_family_selection_benchmark(
-#   truth = truth_gumbel,
-#   estimator_specs = make_sm_specs_1d_noridge(
-#     m_values = c(1, 2, 3, 4, 5, 6),
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# 
-# sm_gumbel_candidates_ridge <- run_family_selection_benchmark(
-#   truth = truth_gumbel,
-#   estimator_specs = make_sm_specs_1d_ridge(
-#     m_values = c(1, 2, 3, 4, 5, 6),
-#     ridge = 1e-2,
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+mle_gumbel_candidates <- run_family_selection_benchmark(
+  truth = truth_gumbel,
+  estimator_specs = make_mle_specs_1d(
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
+
+sm_gumbel_candidates_noridge <- run_family_selection_benchmark(
+  truth = truth_gumbel,
+  estimator_specs = make_sm_specs_1d_noridge(
+    m_values = c(1, 2, 3, 4, 5, 6),
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
+
+sm_gumbel_candidates_ridge <- run_family_selection_benchmark(
+  truth = truth_gumbel,
+  estimator_specs = make_sm_specs_1d_ridge(
+    m_values = c(1, 2, 3, 4, 5, 6),
+    ridge = 1e-2,
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
 
 # --- 4) Laplace ------------------------------------------------------------
 
-# kde_laplace_candidates <- run_family_selection_benchmark(
-#   truth = truth_laplace,
-#   estimator_specs = make_kde_specs_1d(
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# 
-# mle_laplace_candidates <- run_family_selection_benchmark(
-#   truth = truth_laplace,
-#   estimator_specs = make_mle_specs_1d(
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+kde_laplace_candidates <- run_family_selection_benchmark(
+  truth = truth_laplace,
+  estimator_specs = make_kde_specs_1d(
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
 
-# sm_laplace_candidates_noridge <- run_family_selection_benchmark(
-#   truth = truth_laplace,
-#   estimator_specs = make_sm_specs_1d_noridge(
-#     m_values = c(1, 2, 3, 4, 5, 6),
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# 
-# sm_laplace_candidates_ridge <- run_family_selection_benchmark(
-#   truth = truth_laplace,
-#   estimator_specs = make_sm_specs_1d_ridge(
-#     m_values = c(1, 2, 3, 4, 5, 6),
-#     ridge = 1e-2,
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+mle_laplace_candidates <- run_family_selection_benchmark(
+  truth = truth_laplace,
+  estimator_specs = make_mle_specs_1d(
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
+
+sm_laplace_candidates_noridge <- run_family_selection_benchmark(
+  truth = truth_laplace,
+  estimator_specs = make_sm_specs_1d_noridge(
+    m_values = c(1, 2, 3, 4, 5, 6),
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
+
+sm_laplace_candidates_ridge <- run_family_selection_benchmark(
+  truth = truth_laplace,
+  estimator_specs = make_sm_specs_1d_ridge(
+    m_values = c(1, 2, 3, 4, 5, 6),
+    ridge = 1e-2,
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
 
 # --- 5) Student-t ----------------------------------------------------------
 
-# kde_student_candidates <- run_family_selection_benchmark(
-#   truth = truth_student,
-#   estimator_specs = make_kde_specs_1d(
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# 
-# mle_student_candidates <- run_family_selection_benchmark(
-#   truth = truth_student,
-#   estimator_specs = make_mle_specs_1d(
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+kde_student_candidates <- run_family_selection_benchmark(
+  truth = truth_student,
+  estimator_specs = make_kde_specs_1d(
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
 
-# sm_student_candidates_noridge <- run_family_selection_benchmark(
-#   truth = truth_student,
-#   estimator_specs = make_sm_specs_1d_noridge(
-#     m_values = c(1, 2, 3, 4, 5, 6),
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
-# 
-# sm_student_candidates_ridge <- run_family_selection_benchmark(
-#   truth = truth_student,
-#   estimator_specs = make_sm_specs_1d_ridge(
-#     m_values = c(1, 2, 3, 4, 5, 6),
-#     ridge = 1e-2,
-#     score_metric_args = score_metric_args_trimmed,
-#     density_metric_args = density_metric_args_trimmed
-#   ),
-#   n_rep = 50,
-#   n_test = 3000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+mle_student_candidates <- run_family_selection_benchmark(
+  truth = truth_student,
+  estimator_specs = make_mle_specs_1d(
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
+
+sm_student_candidates_noridge <- run_family_selection_benchmark(
+  truth = truth_student,
+  estimator_specs = make_sm_specs_1d_noridge(
+    m_values = c(1, 2, 3, 4, 5, 6),
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
+
+sm_student_candidates_ridge <- run_family_selection_benchmark(
+  truth = truth_student,
+  estimator_specs = make_sm_specs_1d_ridge(
+    m_values = c(1, 2, 3, 4, 5, 6),
+    ridge = 1e-2,
+    score_metric_args = score_metric_args_trimmed,
+    density_metric_args = density_metric_args_trimmed
+  ),
+  n_rep = 50,
+  n_test = 3000,
+  save = TRUE,
+  save_dir = "results"
+)
 
 # ------------------------------------------------------------
 # (6.3) Helper for Comparison across estimators
@@ -688,13 +688,13 @@ res_compare_laplace <- run_family_selection_benchmark(
 )
 
 
-# res_compare_student <- run_family_selection_benchmark(
-#   truth = truth_student,
-#   estimator_specs = manual_compare_student,
-#   n_rep = 100,
-#   n_test = 5000,
-#   save = TRUE,
-#   save_dir = "results"
-# )
+res_compare_student <- run_family_selection_benchmark(
+  truth = truth_student,
+  estimator_specs = manual_compare_student,
+  n_rep = 100,
+  n_test = 5000,
+  save = TRUE,
+  save_dir = "results"
+)
 
 
