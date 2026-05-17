@@ -117,6 +117,22 @@ compare_factor(
   exclude_normalization_suspect = TRUE
 )
 
+# Bias Variance Tradeoff
+# drop sm6
+only_show_sm_methods <- c(
+  "SM_m6_ridge1e-02_std"
+)
+# --- 2) Logistic -----------------------------------------------------------
+sm_logistic_candidates_ridge <- readRDS("02_Results/final_logistic_sm_ridge.rds")
+plot_final_benchmark(sm_logistic_candidates_ridge, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE,  method_label_map = renaming_Ridge , drop_method_labels = only_show_sm_methods)
+# --- 3) Gumbel -------------------------------------------------------------
+sm_gumbel_candidates_ridge <- readRDS("02_Results/final_gumbel_sm_ridge.rds")
+plot_final_benchmark(sm_gumbel_candidates_ridge, metric = "score_loss", center = "mean", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE,  method_label_map = renaming_Ridge, drop_method_labels = only_show_sm_methods )
+
+
+
 # ------------------------------------------------------------
 # (2) Univariate Tests on KL loss to Gaussian density
 # ------------------------------------------------------------
