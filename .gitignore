@@ -6,7 +6,6 @@
 # Daten (oft groß)
 data/
 *.csv
-*.RDS
 
 # Output
 *.html
