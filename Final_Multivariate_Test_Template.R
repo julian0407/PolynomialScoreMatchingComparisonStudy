@@ -197,7 +197,7 @@ make_sm_specs_mv_lc_compare <- function(m_values = c(1, 2, 3, 4, 5),
           standardize = TRUE,
           ridge = ridge,
           log_concave = FALSE,
-          optim_grad = TRUE
+          optim_grad = optim_grad
         ),
         density_predict_args = list(),
         score_predict_args = list(),
@@ -217,7 +217,7 @@ make_sm_specs_mv_lc_compare <- function(m_values = c(1, 2, 3, 4, 5),
           lc_method = "grid",
           lc_grid_size = lc_grid_size,
           lc_penalty = lc_penalty,
-          optim_grad = TRUE
+          optim_grad = optim_grad
         ),
         density_predict_args = list(),
         score_predict_args = list(),

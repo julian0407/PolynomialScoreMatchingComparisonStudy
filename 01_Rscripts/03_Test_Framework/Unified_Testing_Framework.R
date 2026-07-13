@@ -180,6 +180,37 @@ safe_evaluate_requested_metrics <- function(metrics,
 # (3) One single Benchmark run
 # ---------------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------------
+# (3.1) Seed helper for local lambda-mu starts
+# ---------------------------------------------------------------------------------
+
+# Generates new run_seed with offset, offset=1 -> run_seed does not change
+make_lambda_mu_seed_from_run_seed <- function(run_seed, offset = 1L) {
+  # check if run_seed is valid input argument
+  if (is.null(run_seed) || length(run_seed) != 1L || !is.finite(run_seed)) {
+    return(NULL)
+  }
+  # Upper bound for valid run_seed
+  modulus <- as.double(.Machine$integer.max - 1L)
+  # generates run seed wirh offset
+  as.integer(((as.double(run_seed) + as.double(offset) - 1) %% modulus) + 1L)
+}
+
+# Helper function to generate run seeds such that every estimator uses same seeds in training and testing
+make_paired_run_seed_grid <- function(sample_sizes, n_rep, seed = NULL) {
+  # set global seed
+  if (!is.null(seed)) set.seed(seed)
+  
+  # empty seed list
+  run_seed_grid <- list()
+  # generates for each sample size n_rep random seeds
+  for (n in sample_sizes) {
+    run_seed_grid[[as.character(n)]] <- sample.int(.Machine$integer.max, size = n_rep)
+  }
+  # return list where each sample size "n" -> c(seed_1, ..., seed_n_rep)
+  run_seed_grid
+}
+
 # This function performs one single benchmark run
 # Important arguments
 #   - metric and family tags
@@ -224,6 +255,33 @@ run_one_final_experiment <- function(n,
   if (!is.null(run_seed)) set.seed(run_seed)
   x_train <- r_sample(n)
   if (family == "univariate") x_train <- as.numeric(x_train) else x_train <- as.matrix(x_train)
+  
+  # Optional: derive a local lambda_mu_seed from run_seed.
+  # This is only active for new estimator_specs that explicitly set lambda_mu_seed_from_run_seed = TRUE.
+  
+  # Only for SM estimator
+  if (identical(family, "univariate") &&
+      identical(estimator_spec$method, "SM")) {
+    
+    # Get args or initialize them with standard values
+    estimator_spec$fit_args <- estimator_spec$fit_args %||% list()
+    parameterization <- estimator_spec$fit_args$parameterization %||% "psd"
+    # Only generate seed if direct lambda and mu optimization is used, lambda_mu_seed_from_run_seed==True
+    # and lambda_mu_seed not NULL
+    if (identical(parameterization, "lambda_mu") &&
+        isTRUE(estimator_spec$lambda_mu_seed_from_run_seed) &&
+        is.null(estimator_spec$fit_args$lambda_mu_seed)) {
+      
+      # Get offset or set offset to one
+      lambda_mu_seed_offset <- estimator_spec$lambda_mu_seed_offset %||% 1L
+      # Generate lambda_mu_seed with offset based on run_seed
+      estimator_spec$fit_args$lambda_mu_seed <-
+        make_lambda_mu_seed_from_run_seed(
+          run_seed = run_seed,
+          offset = lambda_mu_seed_offset
+        )
+    }
+  }
   
   # Save runtime for fit
   fit_time <- system.time({
@@ -636,7 +694,363 @@ run_final_benchmark <- function(sample_sizes,
   obj
 }
 
+# ---------------------------------------------------------------------------------
+# (5) Paired comparison of univariate SM parameterizations
+# ---------------------------------------------------------------------------------
+# This code is to compare the SM estiator using the PSD constraint with the direct 
+# lambda - mu optimization
 
+# ------------------------------------------------------------
+# (5.1) Diagnostics and Helper for comparing SM fits
+# ------------------------------------------------------------
+
+# Get coefficients from G that correspond to second derivative of polynomial s
+second_derivative_coefficients_from_G <- function(G) {
+  # q(z) = phi(z)^T G phi(z) with max degree 2m-2
+  m <- nrow(G)
+  # Create empty coefficient vector
+  coeff <- numeric(2L * m - 1L)
+  
+  for (i in seq_len(m)) {
+    for (j in seq_len(m)) {
+      # degree = i+j-2
+      deg <- (i - 1L) + (j - 1L)
+      # sum up coefficients of G that belongs to basis z^deg
+      coeff[deg + 1L] <- coeff[deg + 1L] + G[i, j]
+    }
+  }
+  coeff
+}
+
+# Derive score coefficients from G and c1
+score_coefficients_from_G_c1 <- function(G, c1) {
+  # Get coefficients from secon derivative
+  q <- second_derivative_coefficients_from_G(G)
+  # Initialize empty vector
+  out <- numeric(length(q) + 1L)
+  # first entry is the constant term c1
+  out[1L] <- c1
+  
+  # Derive coefficents after integration
+  for (r in seq_along(q)) {
+    deg <- r - 1L
+    out[deg + 2L] <- q[r] / (deg + 1L)
+  }
+  out
+}
+
+# Compute l2 difference of coefficients of score polynomials obtained by two fit objects
+coef_l2_diff <- function(fit_a, fit_b) {
+  ca <- score_coefficients_from_G_c1(fit_a$G, fit_a$c1)
+  cb <- score_coefficients_from_G_c1(fit_b$G, fit_b$c1)
+  
+  # Fill missing coefficoents with 0
+  L <- max(length(ca), length(cb))
+  ca <- c(ca, rep(0, L - length(ca)))
+  cb <- c(cb, rep(0, L - length(cb)))
+  # l2 difference of coefficients
+  sum((ca - cb)^2)
+}
+
+# l2 difference of matrices G obtained by two fit objects
+gram_l2_diff <- function(fit_a, fit_b) {
+  sum((as.vector(fit_a$G) - as.vector(fit_b$G))^2)
+}
+
+# Get objective value after fitting
+empirical_objective_value <- function(fit,
+                                      z_train = fit$z_train) {
+  # Get degree parameter m
+  m <- fit$m
+  # This function is only used for not simple SM
+  h = function(z) rep(1, length(z))
+  h_prime = function(z) rep(0, length(z))
+  
+  # Build input of objecctive function
+  inp <- build_K_and_l_univariate(z_train, m, h, h_prime)
+  K <- inp$K + fit$ridge * diag(nrow(inp$K))
+  l <- inp$l
+  
+  # Use scaling to backtransform to internal scaling
+  g_sc <- as.vector(fit$G) * inp$scale_vec
+  y <- c(g_sc, fit$c1)
+  # Calculate objective value
+  as.numeric(0.5 * crossprod(y, K %*% y) - sum(l * y))
+}
+
+# Compute score loss based on fit and test data
+score_loss_univariate_fit <- function(fit, x_test, true_score) {
+  # Use metric evaluation from other script
+  res <- evaluate_requested_metrics(
+    metrics = "score_loss",
+    x_test = x_test,
+    fit = fit,
+    family = "univariate",
+    method = "SM",
+    true_score = true_score
+  )
+  # only return score loss
+  as.numeric(res$score_loss)
+}
+
+# Helper function to measure fitting time and determine score loss
+fit_score_time_sm_univariate <- function(parameterization,
+                                         x_train,
+                                         x_test,
+                                         m,
+                                         ridge,
+                                         true_score,
+                                         standardize = TRUE,
+                                         optim_control = list(maxit = 1000, reltol = 1e-8),
+                                         lambda_mu_seed = NULL,
+                                         lambda_mu_n_starts = 10,
+                                         lambda_mu_init_sd = 0.1) {
+  # Call fitting and save time needed for fit
+  fit_time <- system.time({
+    fit <- fit_score_matching_univariate(
+      x = x_train,
+      m = m,
+      standardize = standardize,
+      ridge = ridge,
+      parameterization = parameterization,
+      optim_control = optim_control,
+      lambda_mu_seed = lambda_mu_seed,
+      lambda_mu_n_starts = lambda_mu_n_starts,
+      lambda_mu_init_sd = lambda_mu_init_sd
+    )
+  })
+  # Call score_loss calculation and save time needed for it
+  score_time <- system.time({
+    score_loss <- score_loss_univariate_fit(
+      fit = fit,
+      x_test = x_test,
+      true_score = true_score
+    )
+  })
+  
+  #return fit, times, score loss, objective value, and solver status
+  list(
+    fit = fit,
+    fit_time = as.numeric(fit_time["elapsed"]),
+    score_time = as.numeric(score_time["elapsed"]),
+    score_loss = score_loss,
+    objective = empirical_objective_value(fit),
+    status = fit$status
+  )
+}
+
+# ------------------------------------------------------------
+# (5.2) Run Comparison experiment
+# ------------------------------------------------------------
+
+run_one_sm_parameterization_comparison <- function(n,
+                                                   m,
+                                                   ridge = 0,
+                                                   n_test = 3000,
+                                                   run_seed,
+                                                   r_sample,
+                                                   true_score,
+                                                   standardize = TRUE,
+                                                   optim_control = list(maxit = 1000, reltol = 1e-8),
+                                                   lambda_mu_n_starts = 10,
+                                                   lambda_mu_init_sd = 0.1) {
+  # set global seed and sample training and test data
+  set.seed(run_seed)
+  x_train <- as.numeric(r_sample(n))
+  x_test  <- as.numeric(r_sample(n_test))
+  # do not change lambda mu seed
+  lambda_mu_seed <- make_lambda_mu_seed_from_run_seed(
+    run_seed = run_seed,
+    offset = 1L
+  )
+  # Fitting + measuring for psd
+  psd <- fit_score_time_sm_univariate(
+    parameterization = "psd",
+    x_train = x_train,
+    x_test = x_test,
+    m = m,
+    ridge = ridge,
+    true_score = true_score,
+    standardize = standardize,
+    optim_control = optim_control,
+  )
+  # Fitting + measuring for lambda mu
+  lambda_mu <- fit_score_time_sm_univariate(
+    parameterization = "lambda_mu",
+    x_train = x_train,
+    x_test = x_test,
+    m = m,
+    ridge = ridge,
+    true_score = true_score,
+    standardize = standardize,
+    optim_control = optim_control,
+    lambda_mu_seed = lambda_mu_seed,
+    lambda_mu_n_starts = lambda_mu_n_starts,
+    lambda_mu_init_sd = lambda_mu_init_sd
+  )
+  
+  # Save data into dataframe
+  data.frame(
+    n = n,
+    m = m,
+    ridge = ridge,
+    run_seed = run_seed,
+    lambda_mu_seed = lambda_mu_seed,
+    
+    fit_time_psd = psd$fit_time,
+    fit_time_lambda_mu = lambda_mu$fit_time,
+    
+    score_inference_time_psd = psd$score_time,
+    score_inference_time_lambda_mu = lambda_mu$score_time,
+
+    score_loss_psd = psd$score_loss,
+    score_loss_lambda_mu = lambda_mu$score_loss,
+    
+    objective_psd = psd$objective,
+    objective_lambda_mu = lambda_mu$objective,
+    
+    coef_l2_psd_vs_lambda_mu =
+      coef_l2_diff(psd$fit, lambda_mu$fit),
+    
+    gram_l2_psd_vs_lambda_mu =
+      gram_l2_diff(psd$fit, lambda_mu$fit),
+
+    
+    status_psd = psd$status,
+    status_lambda_mu = lambda_mu$status,
+    
+    stringsAsFactors = FALSE
+  )
+}
+
+# Use many single runs to compare the average differences in coefficients and other metrics
+run_sm_parameterization_comparison <- function(sample_sizes = c(200, 500, 1000),
+                                               m_values = c(5, 6),
+                                               ridge = 0,
+                                               n_rep = 10,
+                                               n_test = 3000,
+                                               seed = 123,
+                                               r_sample,
+                                               true_score,
+                                               standardize = TRUE,
+                                               optim_control = list(maxit = 1000, reltol = 1e-8),
+                                               lambda_mu_n_starts = 10,
+                                               lambda_mu_init_sd = 0.1,
+                                               save = FALSE,
+                                               save_dir = ".",
+                                               save_name = NULL) {
+  # Generate seed grid to use the same training and test data for both estimators (psd and lambda mu)
+  run_seed_grid <- make_paired_run_seed_grid(
+    sample_sizes = sample_sizes,
+    n_rep = n_rep,
+    seed = seed
+  )
+  
+  # Initialize empty result list and counter
+  rows <- list()
+  counter <- 1L
+  
+  # Iterate over all configurations
+  for (m in m_values) {
+    for (n in sample_sizes) {
+      for (rep in seq_len(n_rep)) {
+        # Get corresponding run seed
+        run_seed <- run_seed_grid[[as.character(n)]][rep]
+        
+        message(
+          "SM parameterization comparison: m=", m,
+          ", n=", n,
+          ", rep=", rep, "/", n_rep
+        )
+        # run one comparison_bemchmark_run
+        rows[[counter]] <- tryCatch(
+          run_one_sm_parameterization_comparison(
+            n = n,
+            m = m,
+            ridge = ridge,
+            n_test = n_test,
+            run_seed = run_seed,
+            r_sample = r_sample,
+            true_score = true_score,
+            standardize = standardize,
+            optim_control = optim_control,
+            lambda_mu_n_starts = lambda_mu_n_starts,
+            lambda_mu_init_sd = lambda_mu_init_sd
+          ),
+          error = function(e) {
+            data.frame(
+              n = n,
+              m = m,
+              ridge = ridge,
+              run_seed = run_seed,
+              error = conditionMessage(e),
+              stringsAsFactors = FALSE
+            )
+          }
+        )
+        # iterate counter
+        rows[[counter]]$repetition <- rep
+        counter <- counter + 1L
+      }
+    }
+  }
+  # Summarize values in one dataframe
+  raw <- bind_rows_fill_base(rows)
+  # Initlize list of names that will be filled with average values
+  summary_vars <- c(
+    "fit_time_psd",
+    "fit_time_lambda_mu",
+    "score_inference_time_psd",
+    "score_inference_time_lambda_mu",
+    "score_loss_psd",
+    "score_loss_lambda_mu",
+    "objective_psd",
+    "objective_lambda_mu",
+    "coef_l2_psd_vs_lambda_mu",
+    "gram_l2_psd_vs_lambda_mu"
+  )
+  # Only take variables that exist in raw
+  summary_vars <- intersect(summary_vars, names(raw))
+  # aggregate and group by n, m and ridge/noridge
+  summary <- aggregate(
+    raw[, summary_vars, drop = FALSE],
+    by = list(n = raw$n, m = raw$m, ridge = raw$ridge),
+    FUN = function(x) mean(x, na.rm = TRUE)
+  )
+  
+  # Create final structure
+  out <- structure(
+    list(
+      raw = raw,
+      summary = summary,
+      settings = list(
+        sample_sizes = sample_sizes,
+        m_values = m_values,
+        ridge = ridge,
+        n_rep = n_rep,
+        n_test = n_test,
+        seed = seed,
+        lambda_mu_n_starts = lambda_mu_n_starts,
+        lambda_mu_init_sd = lambda_mu_init_sd
+      )
+    ),
+    class = "sm_parameterization_comparison"
+  )
+  
+  # Optional: Save object 
+  if (isTRUE(save)) {
+    if (!dir.exists(save_dir)) {
+      dir.create(save_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    save_name <- save_name %||% paste0(
+      "sm_parameterization_comparison_",
+      ".rds"
+    )
+    save_path <- file.path(save_dir, save_name)
+    saveRDS(out, save_path)
+  }
+  out
+}
 
 # --------------------------------------------------------------------------
 # (6) Helper functions to filter result object to create specific plots
@@ -724,7 +1138,8 @@ aggregate_final_benchmark <- function(obj,
                                       keep_methods = NULL,
                                       drop_methods = NULL,
                                       across_runs_center = c("mean", "median", "sd"),
-                                      exclude_normalization_suspect = FALSE) {
+                                      exclude_normalization_suspect = FALSE,
+                                      conf_level = 0.95) {
   across_runs_center <- match.arg(across_runs_center)
   if (!inherits(obj, "final_benchmark")) stop("obj must be 'final_benchmark'.")
   
@@ -803,6 +1218,22 @@ aggregate_final_benchmark <- function(obj,
       NA_real_
     }
     
+    # Get data length (number of benchmark runs inside a group)
+    R <- length(x_finite)
+    
+    # Get mean, sd and se
+    mean_x <- if (R > 0L) mean(x_finite) else NA_real_
+    sd_x   <- if (R > 1L) stats::sd(x_finite) else NA_real_
+    se_x   <- if (R > 1L) sd_x / sqrt(R) else NA_real_
+    
+    # Calculate t-quantile for given conf_level and number of benchmark_runs - 1
+    alpha <- 1 - conf_level
+    tcrit <- if (R > 1L) stats::qt(1 - alpha / 2, df = R - 1L) else NA_real_
+    
+    # Calculate CI bounds
+    ci_low  <- mean_x - tcrit * se_x
+    ci_high <- mean_x + tcrit * se_x
+    
     # several standard aggregates and information
     data.frame(
       method_label = dd$method_label[1],
@@ -815,18 +1246,23 @@ aggregate_final_benchmark <- function(obj,
         across_runs_center,
         mean = safe_mean(x),
         median = safe_median(x),
-        sd = safe_sd(x)
+        sd = safe_sd_finite(x)
       ),
       q25 = q1,
       q75 = q3,
       iqr = iqr,
-      sd = safe_sd(x),
+      sd = safe_sd_finite(x),
       across_runs_center = across_runs_center,
       outlier_run_share = outlier_share,
       failure_rate = failure_rate,
       normalization_failure_rate = normalization_failure_rate,
       normalization_suspect_rate = normalization_suspect_rate,
-      stringsAsFactors = FALSE
+      stringsAsFactors = FALSE,
+      n_rep_used = R,
+      se = se_x,
+      ci_low = ci_low,
+      ci_high = ci_high,
+      conf_level = conf_level
     )
   })
   
@@ -1068,8 +1504,10 @@ replay_benchmark_run <- function(obj,
 # --------------------------------------------------------------------------
 plot_final_benchmark <- function(obj,
                                  metric,
-                                 center = c("mean", "median"),
-                                 interval = c("iqr", "none"),
+                                 center = c("mean", "median", "sd"),
+                                 interval = c("iqr", "sd", "ci", "none"),
+                                 interval_geom = c("ribbon", "errorbar", "linerange"),
+                                 conf_level = 0.95,
                                  keep_n = NULL,
                                  drop_n = NULL,
                                  keep_method_labels = NULL,
@@ -1078,11 +1516,13 @@ plot_final_benchmark <- function(obj,
                                  drop_methods = NULL,
                                  method_label_map = NULL,
                                  drop_all_na = TRUE,
+                                 facet_methods = FALSE,
                                  log_x = FALSE,
                                  log_y = FALSE,
                                  exclude_normalization_suspect = FALSE) {
   center <- match.arg(center)
   interval <- match.arg(interval)
+  interval_geom <- match.arg(interval_geom)
   # get aggregated benchmark object
   agg <- aggregate_final_benchmark(
     obj = obj,
@@ -1095,7 +1535,8 @@ plot_final_benchmark <- function(obj,
     keep_methods = keep_methods,
     drop_methods = drop_methods,
     across_runs_center = center,
-    exclude_normalization_suspect = exclude_normalization_suspect
+    exclude_normalization_suspect = exclude_normalization_suspect,
+    conf_level = conf_level
   )
   
   if (nrow(agg) == 0L) stop("No rows left after applying the sample-size filter.")
@@ -1107,7 +1548,13 @@ plot_final_benchmark <- function(obj,
   }
   # Build title from data in readable name
   metric_label <- tools::toTitleCase(gsub("_", " ", metric))
-  center_label <- if (center == "mean") "Average" else "Median"
+  center_label <- if (center == "mean") {
+    "Average"
+  } else if (center == "median") {
+    "Median"
+  } else {
+    "SD"
+  }
   # Replace Score Loss with Score MSE
   metric_label <- gsub("Score Loss", "Score MSE", metric_label)
   # Replace KL with EKL
@@ -1120,9 +1567,27 @@ plot_final_benchmark <- function(obj,
   if (interval == "iqr") {
     agg$ymin <- agg$q25
     agg$ymax <- agg$q75
+  } else if (interval == "sd") {
+    agg$ymin <- agg$mean - agg$sd
+    agg$ymax <- agg$mean + agg$sd
+  } else if (interval == "ci") {
+    agg$ymin <- agg$ci_low
+    agg$ymax <- agg$ci_high
   } else {
     agg$ymin <- NA_real_
     agg$ymax <- NA_real_
+  }
+  
+  # Apply logscale if True
+  if (isTRUE(log_y) && interval != "none") {
+    vals <- c(agg$y, agg$ymin, agg$ymax)
+    vals_pos <- vals[is.finite(vals) & vals > 0]
+    
+    if (length(vals_pos) > 0L) {
+      eps <- min(vals_pos, na.rm = TRUE) / 10
+      agg$ymin[!is.finite(agg$ymin) | agg$ymin <= 0] <- eps
+      agg$ymax[!is.finite(agg$ymax) | agg$ymax <= 0] <- NA_real_
+    }
   }
   # subtitle if KL
   subtitle <- NULL
@@ -1147,19 +1612,46 @@ plot_final_benchmark <- function(obj,
       subtitle = subtitle
     ) +
     ggplot2::theme_minimal()
-  # Optionally Add iqr band
+  # Optionally Add iqr, ci, sd band
   if (interval != "none") {
-    p <- p + ggplot2::geom_ribbon(
-      ggplot2::aes(ymin = ymin, ymax = ymax, fill = method_label),
-      alpha = 0.15,
-      colour = NA,
-      show.legend = FALSE
-    )
+    if (interval_geom == "ribbon") {
+      p <- p + ggplot2::geom_ribbon(
+        ggplot2::aes(ymin = ymin, ymax = ymax, fill = method_label),
+        alpha = 0.15,
+        colour = NA,
+        show.legend = FALSE
+      )
+    } else if (interval_geom == "errorbar") {
+      p <- p + ggplot2::geom_errorbar(
+        ggplot2::aes(ymin = ymin, ymax = ymax),
+        width = 0.04,
+        alpha = 0.75,
+        show.legend = FALSE
+      )
+    } else if (interval_geom == "linerange") {
+      p <- p + ggplot2::geom_linerange(
+        ggplot2::aes(ymin = ymin, ymax = ymax),
+        alpha = 0.75,
+        show.legend = FALSE
+      )
+    }
   }
   # optional logscale
   p <- apply_optional_log_scale(p, agg$n, axis = "x", requested = log_x)
-  p <- apply_optional_log_scale(p, agg$y, axis = "y", requested = log_y)
-  
+  p <- apply_optional_log_scale(
+    p,
+    c(agg$y, agg$ymin, agg$ymax),
+    axis = "y",
+    requested = log_y
+  )
+  # Optional: Split plots
+  if (isTRUE(facet_methods)) {
+    p <- p +
+      ggplot2::scale_x_continuous(
+        breaks = c(0, max(agg$n, na.rm = TRUE) / 2, max(agg$n, na.rm = TRUE))
+      ) +
+      ggplot2::facet_wrap(~ method_label)
+  }
   p
 }
 
@@ -1440,4 +1932,250 @@ compare_factor <- function(obj_left,
   out <- out[order(out$m, out$n), ]
   rownames(out) <- NULL
   out
+}
+
+# Generate Boxplot for a metric in a final benchmark object
+plot_final_benchmark_boxplot <- function(obj,
+                                         metric,
+                                         keep_n = NULL,
+                                         drop_n = NULL,
+                                         keep_method_labels = NULL,
+                                         drop_method_labels = NULL,
+                                         keep_methods = NULL,
+                                         drop_methods = NULL,
+                                         method_label_map = NULL,
+                                         log_y = FALSE,
+                                         exclude_normalization_suspect = FALSE) {
+  # Check if final benchmark object
+  if (!inherits(obj, "final_benchmark")) stop("obj must be 'final_benchmark'.")
+  
+  # Get filtered raw data
+  df <- filter_benchmark_df_by_n(obj$raw, keep_n = keep_n, drop_n = drop_n)
+  df <- filter_benchmark_df_by_method(
+    df,
+    keep_method_labels = keep_method_labels,
+    drop_method_labels = drop_method_labels,
+    keep_methods = keep_methods,
+    drop_methods = drop_methods
+  )
+  
+  # optionally exclude runs with suspicious normlaizing constant
+  if (isTRUE(exclude_normalization_suspect)) {
+    if (!"normalization_suspect" %in% names(df)) {
+      stop("Column 'normalization_suspect' not found in benchmark output.")
+    }
+    df <- df[!(df$method %in% "SM" & df$normalization_suspect %in% TRUE), , drop = FALSE]
+  }
+  
+  # Only metrics that are contained in df can be plotted
+  if (!metric %in% names(df)) stop(sprintf("Metric '%s' not found.", metric))
+  
+  # Get desired finite metric values
+  df$value <- as.numeric(df[[metric]])
+  df <- df[is.finite(df$value), , drop = FALSE]
+  
+  # Apply renaming for method labels in the plots
+  if (!is.null(method_label_map)) {
+    hit <- df$method_label %in% names(method_label_map)
+    df$method_label[hit] <- unname(method_label_map[df$method_label[hit]])
+  }
+  
+  # x labels should be categorical values
+  df$n <- factor(df$n, levels = sort(unique(df$n)))
+  
+  # Generate axis names
+  metric_label <- tools::toTitleCase(gsub("_", " ", metric))
+  metric_label <- gsub("Score Loss", "Score MSE", metric_label)
+  metric_label <- gsub("Kl", "EKL", metric_label)
+  
+  # generate boxplot (0.25, 0.75 quartile, 1.5 x IQR = Whisker)
+  p <- ggplot2::ggplot(
+    df,
+    ggplot2::aes(x = n, y = value, fill = method_label)
+  ) +
+    ggplot2::geom_boxplot(outlier.alpha = 0.35) +
+    ggplot2::labs(
+      x = "Sample Size n",
+      y = metric_label,
+      fill = "Method",
+      title = paste(metric_label, "distribution across repetitions")
+    ) +
+    ggplot2::theme_minimal()
+  
+  # Optional: Apply log scale
+  p <- apply_optional_log_scale(p, df$value, axis = "y", requested = log_y)
+  # return plot
+  p
+}
+
+
+# --------------------------------------------------------------------------
+# (11) Additional analysis for Confidence Intervals
+# --------------------------------------------------------------------------
+
+# Create a summary table that only reports the CI related values and not the full aggregated data
+ci_summary_table <- function(obj,
+                             metric = "score_loss",
+                             conf_level = 0.95,
+                             method_label_map = NULL,
+                             ...) {
+  # Call aggregate_final_benchmark() using mean
+  tab <- aggregate_final_benchmark(
+    obj = obj,
+    metric = metric,
+    across_runs_center = "mean",
+    conf_level = conf_level,
+    ...
+  )
+  
+  # Apply optional renaming for plot descriptions in later functions
+  if (!is.null(method_label_map)) {
+    hit <- tab$method_label %in% names(method_label_map)
+    tab$method_label[hit] <- unname(method_label_map[tab$method_label[hit]])
+  }
+  
+  # Check if lower interval is negative and if both bounds are positive
+  tab$ci_low_negative <- tab$ci_low < 0
+  tab$log_scale_ci_ok <- tab$ci_low > 0 & tab$ci_high > 0
+  
+  # Filtere aggregated data only for relevant CI data
+  tab <- tab[, c(
+    "method_label",
+    "method",
+    "n",
+    "n_rep_used",
+    "mean",
+    "ci_low",
+    "ci_high",
+    "ci_low_negative",
+    "log_scale_ci_ok"
+  )]
+  
+  # Return sorted table group by (method_label, training size)
+  tab[order(tab$method_label, tab$n), ]
+}
+
+
+# Plots the relative halfwidth of a confidence interval
+# Is used to interpret CIs with negative lower bound
+# needs CI summary table as input and apply optional logscale
+# Plots descriotion is only for Score MSE. This function is not for other metrics
+plot_relative_ci_halfwidth <- function(ci_tab, log_y = TRUE) {
+  # Computes relative halfwidth
+  ci_tab$relative_ci_halfwidth <- (ci_tab$ci_high - ci_tab$mean) / ci_tab$mean
+  
+  # Plots values (recall: method renaming was already generated in CI summary table)
+  p <- ggplot2::ggplot(
+    ci_tab,
+    ggplot2::aes(
+      x = n,
+      y = relative_ci_halfwidth,
+      color = method_label,
+      group = method_label
+    )
+  ) +
+    ggplot2::geom_line() +
+    ggplot2::geom_point() +
+    ggplot2::labs(
+      x = "Sample Size n",
+      y = "Relative CI half-width",
+      color = "Method",
+      title = "Relative Monte Carlo Uncertainty of Mean Score MSE"
+    ) +
+    ggplot2::theme_minimal()
+  
+  # Apply optional logscale
+  if (isTRUE(log_y)) {
+    p <- p + ggplot2::scale_y_log10()
+  }
+  
+  p
+}
+
+
+# Alternative Transformed CI Intervals with delta method. Hardcoded for Score MSE. For other metrics this method must be adapted
+plot_score_mse_log_ci <- function(obj,
+                                  conf_level = 0.95,
+                                  method_label_map = NULL) {
+  # Takes and checks final benchmark object
+  if (!inherits(obj, "final_benchmark")) {
+    stop("obj must be a 'final_benchmark' object.")
+  }
+  
+  # Splits data according group key (method, training size)
+  groups <- split(
+    obj$raw,
+    interaction(obj$raw$method_label, obj$raw$n, drop = TRUE)
+  )
+  
+  # Apply this function for every grouped data (Computes the CI with delta method)
+  ci <- do.call(rbind, lapply(groups, function(d) {
+    # Get finite score loss
+    x <- as.numeric(d$score_loss)
+    x <- x[is.finite(x)]
+    # get data vector length
+    R <- length(x)
+    
+    # Must at least two Score MSE values
+    if (R < 2L) return(NULL)
+    
+    # Compute mean
+    xbar <- mean(x)
+    
+    # t-quantile for (1+ conf_level)/2 and df=R-1
+    h <- stats::qt((1 + conf_level) / 2, df = R - 1L) *
+      # adapted sd part because of delta method with log
+      stats::sd(x) / (xbar * sqrt(R))
+    
+    # Backtransform CI and save final data
+    data.frame(
+      method_label = d$method_label[1L],
+      n = d$n[1L],
+      mean = xbar,
+      ci_low = xbar * exp(-h),
+      ci_high = xbar * exp(h)
+    )
+  }))
+  
+  # Apply renaming of methods
+  if (!is.null(method_label_map)) {
+    hit <- ci$method_label %in% names(method_label_map)
+    ci$method_label[hit] <-
+      unname(method_label_map[ci$method_label[hit]])
+  }
+  
+  # Reorder data according (method, training size)
+  ci <- ci[order(ci$method_label, ci$n), ]
+  
+  # Generate Plot with CI ribbon
+  ggplot2::ggplot(
+    ci,
+    ggplot2::aes(
+      x = n,
+      y = mean,
+      color = method_label,
+      group = method_label
+    )
+  ) +
+    ggplot2::geom_ribbon(
+      ggplot2::aes(
+        ymin = ci_low,
+        ymax = ci_high,
+        fill = method_label
+      ),
+      alpha = 0.15,
+      colour = NA,
+      show.legend = FALSE
+    ) +
+    ggplot2::geom_line() +
+    ggplot2::geom_point() +
+    # apply logscale
+    ggplot2::scale_y_log10() +
+    ggplot2::labs(
+      x = "Sample Size n",
+      y = "Average Score MSE",
+      color = "Method",
+      title = "Average Score MSE with Back-Transformed Log CI"
+    ) +
+    ggplot2::theme_minimal()
 }

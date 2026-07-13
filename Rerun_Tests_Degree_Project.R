@@ -27,6 +27,48 @@ plot_final_benchmark(sm_gaussian_candidates_noridge, metric = "score_loss", cent
                      exclude_normalization_suspect = FALSE, method_label_map = renaming)
 aggregate_final_benchmark(sm_gaussian_candidates_noridge, metric = "score_loss", across_runs_center = "mean",
                           exclude_normalization_suspect = FALSE)
+
+# CI analysis
+plot_final_benchmark(
+  sm_gaussian_candidates_noridge,
+  metric = "score_loss",
+  center = "mean",
+  interval = "ci",
+  interval_geom = "ribbon",
+  log_y = TRUE,
+  drop_method_labels = c("SM_m4_noridge_std", "SM_m5_noridge_std", "SM_m6_noridge_std"),
+  method_label_map = renaming
+)
+
+# CI summary table
+ci_tab <- ci_summary_table(
+  sm_gaussian_candidates_noridge,
+  metric = "score_loss",
+  conf_level = 0.95,
+  exclude_normalization_suspect = FALSE,
+  method_label_map = renaming
+)
+ci_tab
+
+# CI Halfwidth plot
+plot_relative_ci_halfwidth(ci_tab, log_y = FALSE)
+
+# CI delta method for log transform/backtransform
+plot_score_mse_log_ci(
+  sm_gaussian_candidates_noridge,
+  conf_level = 0.95,
+  method_label_map = renaming
+)
+
+# Boxplot analysis
+plot_final_benchmark_boxplot(
+  sm_gaussian_candidates_noridge,
+  metric = "score_loss",
+  log_y = TRUE,
+  drop_n = c(50, 200 ,500),
+  method_label_map = renaming
+)
+
 # Average condition number per estimator, No ridge
 average_condition_number_by_estimator(sm_gaussian_candidates_noridge)
 
@@ -63,6 +105,7 @@ gap_summary_gaussian_no_ridge_n1000_SM6
 gap_summary_gaussian_no_ridge_n1000_SM6[
   , c("method_label", "n", "max_gap", "run_seed")
 ]
+
 # replay the run that generates the max training test gap
 Gap_run_top1 <- replay_benchmark_run(sm_gaussian_candidates_noridge, "SM_m6_noridge_std", 1000, run_seed = 54768478)
 # get index that corresponds to the maximum pointwise score loss
@@ -200,6 +243,7 @@ plot_final_benchmark(sm_laplace_candidates_ridge, metric = "kl", center = "mean"
 plot_final_benchmark(kde_laplace_candidates, metric = "kl", center = "mean", interval = "none", log_y = TRUE,
                      exclude_normalization_suspect = FALSE, method_label_map = renaming_Mixed)
 
+
 # --------------------------------------------------------------------
 # (3.1) Benchmarking
 # --------------------------------------------------------------------
@@ -226,6 +270,19 @@ plot_final_benchmark(laplace_mixed, metric = "kl", center = "mean", interval = "
                      exclude_normalization_suspect = FALSE, method_label_map = renaming_Mixed)
 
 
+# --- 5) Median Performance No Ridge  -----------------------------------------------------------
+sm_gaussian_candidates_noridge <- readRDS("02_Results/final_gaussian_sm_noridge.rds")
+plot_final_benchmark(sm_gaussian_candidates_noridge, metric = "kl", center = "median", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE,  method_label_map = renaming)
+sm_gumbel_candidates_noridge <- readRDS("02_Results/final_gumbel_sm_noridge.rds")
+plot_final_benchmark(sm_gumbel_candidates_noridge, metric = "kl", center = "median", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE,  method_label_map = renaming)
+sm_logistic_candidates_noridge <- readRDS("02_Results/final_logistic_sm_noridge.rds")
+plot_final_benchmark(sm_logistic_candidates_noridge, metric = "kl", center = "median", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE,  method_label_map = renaming)
+sm_laplace_candidates_noridge <- readRDS("02_Results/final_laplace_sm_noridge.rds")
+plot_final_benchmark(sm_laplace_candidates_noridge, metric = "kl", center = "median", interval = "none", log_y = TRUE,
+                     exclude_normalization_suspect = FALSE,  method_label_map = renaming)
 
 
 # ------------------------------------------------------------
@@ -244,21 +301,17 @@ mle_gaussian_d3_independent <- readRDS("02_Results/Multivariate/test_mv_gaussian
 mle_gaussian_d4_independent <- readRDS("02_Results/Multivariate/test_mv_gaussian_d4_mle_nrep5_n1000.rds")
 
 only_show_sm_methods <- c(
-  "SM_grid_logconcave_m1",
-  "SM_no_logconcave_m1",
   "SM_grid_logconcave_m2",
   "SM_no_logconcave_m2",
-  "SM_grid_logconcave_m5",
-  "SM_no_logconcave_m5"
+  "SM_grid_logconcave_m4",
+  "SM_no_logconcave_m4"
 )
 
 rename_sm_methods_multi <- c(
-  "SM_grid_logconcave_m1" = "SM1 Grid",
-  "SM_no_logconcave_m1" = "SM1 No Grid" ,
   "SM_grid_logconcave_m2" = "SM2 Grid",
   "SM_no_logconcave_m2" = "SM2 No Grid",
-  "SM_grid_logconcave_m5" = "SM5 Grid",
-  "SM_no_logconcave_m5" = "SM5 No Grid"
+  "SM_grid_logconcave_m4" = "SM4 Grid",
+  "SM_no_logconcave_m4" = "SM4 No Grid"
 )
 
 # Convergence
@@ -278,18 +331,18 @@ aggregate_final_benchmark(sm_gaussian_cmultivariate_d3_dependent, metric = "lc_m
                           exclude_normalization_suspect = FALSE)
 
 # Runtime
-aggregate_final_benchmark(sm_gaussian_cmultivariate_d2_dependent, metric = "fit_time_sec", across_runs_center = "mean",
-                          exclude_normalization_suspect = FALSE)
-aggregate_final_benchmark(sm_gaussian_cmultivariate_d3_dependent, metric = "fit_time_sec", across_runs_center = "mean",
-                          exclude_normalization_suspect = FALSE)
-aggregate_final_benchmark(sm_gaussian_cmultivariate_d4_dependent, metric = "fit_time_sec", across_runs_center = "mean",
-                          exclude_normalization_suspect = FALSE)
+aggregate_final_benchmark(sm_gaussian_cmultivariate_d2, metric = "fit_time_sec", across_runs_center = "mean",
+                          exclude_normalization_suspect = FALSE, keep_method_labels = only_show_sm_methods)
+aggregate_final_benchmark(sm_gaussian_cmultivariate_d3, metric = "fit_time_sec", across_runs_center = "mean",
+                          exclude_normalization_suspect = FALSE, keep_method_labels = only_show_sm_methods)
+aggregate_final_benchmark(sm_gaussian_cmultivariate_d4, metric = "fit_time_sec", across_runs_center = "mean",
+                          exclude_normalization_suspect = FALSE, keep_method_labels = only_show_sm_methods)
 
-aggregate_final_benchmark(mle_gaussian_d2_independent, metric = "fit_time_sec", across_runs_center = "mean",
-                          exclude_normalization_suspect = FALSE)
+aggregate_final_benchmark(mle_gaussian_d2_dependent, metric = "fit_time_sec", across_runs_center = "mean",
+                          exclude_normalization_suspect = FALSE, keep_method_labels = only_show_sm_methods)
 aggregate_final_benchmark(mle_gaussian_d3_independent, metric = "fit_time_sec", across_runs_center = "mean",
-                          exclude_normalization_suspect = FALSE)
+                          exclude_normalization_suspect = FALSE, keep_method_labels = only_show_sm_methods)
 aggregate_final_benchmark(mle_gaussian_d4_independent, metric = "fit_time_sec", across_runs_center = "mean",
-                          exclude_normalization_suspect = FALSE)
+                          exclude_normalization_suspect = FALSE, keep_method_labels = only_show_sm_methods)
 
 

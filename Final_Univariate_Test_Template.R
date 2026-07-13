@@ -193,7 +193,8 @@ make_sm_specs_1d_noridge <- function(m_values = c(1, 2, 3, 4, 5, 6),
       fit_args = list(
         m = m,
         standardize = TRUE,
-        ridge = 0
+        ridge = 0,
+        parameterization = "psd"
       ),
       density_predict_args = list(
         subdivisions = 200L,
@@ -219,7 +220,8 @@ make_sm_specs_1d_ridge <- function(m_values = c(1, 2, 3, 4, 5, 6),
       fit_args = list(
         m = m,
         standardize = TRUE,
-        ridge = ridge
+        ridge = ridge,
+        parameterization = "psd"
       ),
       density_predict_args = list(
         subdivisions = 200L,
@@ -562,8 +564,10 @@ initial_best_guess <- list(
   gaussian = list(
     kde = "KDE_SJ",
     mle = "MLE_smoothed",
-    sm1 = "SM_m1_noridge_std",
-    sm2 = "SM_m2_noridge_std"
+    sm1 = "SM_m1_ridge1e-02_std",
+    sm2 = "SM_m2_ridge1e-02_std"
+    # sm1 = "SM_m1_noridge_std",
+    # sm2 = "SM_m2_noridge_std"
   ),
   logistic = list(
     kde = "KDE_bcv",
@@ -581,7 +585,8 @@ initial_best_guess <- list(
   ),
   laplace = list(
     kde = "KDE_nrd0",
-    mle = "MLE_unsmoothed",
+    # mle = "MLE_unsmoothed",
+    mle = "MLE_smoothed",
     sm1 = "SM_m2_ridge1e-02_std",
     sm2 = "SM_m3_ridge1e-02_std",
     sm3 = "SM_m4_ridge1e-02_std"
@@ -696,5 +701,4 @@ res_compare_student <- run_family_selection_benchmark(
   save = TRUE,
   save_dir = "results"
 )
-
 

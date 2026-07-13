@@ -277,7 +277,7 @@ safe_median <- function(x) {
   stats::median(x)
 }
 
-safe_sd <- function(x) {
+safe_sd_finite <- function(x) {
   x <- x[is.finite(x)]
   if (length(x) <= 1L) return(NA_real_)
   stats::sd(x)

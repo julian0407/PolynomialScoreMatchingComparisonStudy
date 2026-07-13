@@ -98,7 +98,6 @@ build_K_and_l_univariate <- function(
       list(K = K, l = l, scale_vec = scale_vec)
 }
 
-
 # ------------------------------------------------------------
 # (2) Core fit: univariate Score Matching
 # ------------------------------------------------------------
@@ -111,10 +110,18 @@ fit_score_matching_univariate <- function(
     h_prime = function(z) rep(0, length(z)),
     standardize = TRUE,
     ridge = 0,
+    parameterization = c("psd", "lambda_mu"),
     solver = "SCS",
-    scs_control = list(max_iters = 100000, eps = 1e-5, alpha = 1.8, verbose = FALSE)
+    scs_control = list(max_iters = 100000, eps = 1e-5, alpha = 1.8, verbose = FALSE),
+    optim_control = list(maxit = 1000, reltol = 1e-8),
+    lambda_mu_seed = NULL,
+    lambda_mu_n_starts = 10,
+    lambda_mu_init_sd = 0.1
 ) {
+  # Check which optimization method
+  parameterization <- match.arg(parameterization)
   
+  # Data cleaning
   x <- as.numeric(x)
   x <- x[is.finite(x)]
   if (length(x) < 2) stop("Data vector x must contain at least 
@@ -137,14 +144,7 @@ fit_score_matching_univariate <- function(
   # Precompute matrix K and vector l which determine the estimated score loss
   score_loss_input <- build_K_and_l_univariate(z, m, h, h_prime)
   
-  # Specify optimization variables G, c1 and set PSD constraint to True 
-  G  <- Variable(m, m, PSD = TRUE)
-  c1 <- Variable(1)
-  # Transform these variables to vector representation
-  p = m*m
-  gvec <- tryCatch(vec(G), error = function(e) reshape(G, c(p, 1)))
-  y <- vstack(gvec, c1)
-  
+  # Diagnostics
   K_raw <- score_loss_input$K
   K_reg <- K_raw + ridge * diag(nrow(K_raw))
   
@@ -164,44 +164,182 @@ fit_score_matching_univariate <- function(
   rcond_raw <- tryCatch(1 / kappa(K_raw, exact = TRUE), error = function(e) NA_real_)
   rcond_reg <- tryCatch(1 / kappa(K_reg, exact = TRUE), error = function(e) NA_real_)
   
-  # Define Score loss as objective function by using the precomputed
-  # matrix K and vector l
-  obj <- 0.5 * quad_form(y, Constant(K_reg)) -
-    t(Constant(matrix(score_loss_input$l, ncol = 1))) %*% y
+  # Compute solution based on parameterization method
+  # Convex optimization over G with psd constraint
+  if (parameterization == "psd") {
+    # Specify optimization variables G, c1 and set PSD constraint to True 
+    G  <- Variable(m, m, PSD = TRUE)
+    c1 <- Variable(1)
+    # Transform these variables to vector representation
+    p = m*m
+    gvec <- tryCatch(vec(G), error = function(e) reshape(G, c(p, 1)))
+    y <- vstack(gvec, c1)
+    
+    # Define Score loss as objective function by using the precomputed
+    # matrix K and vector l
+    obj <- 0.5 * quad_form(y, Constant(K_reg)) -
+      t(Constant(matrix(score_loss_input$l, ncol = 1))) %*% y
+    
+    # Specify CVXR problem
+    prob <- Problem(Minimize(obj))
+    
+    # Solve CVXR problem using provided solver settings
+    sol <- solve(
+      prob,
+      solver = solver,
+      max_iters = scs_control$max_iters,
+      eps = scs_control$eps,
+      alpha = scs_control$alpha,
+      verbose = scs_control$verbose
+    )
+    
+    # Back-transform column scaled solution for g_vec
+    g_sc  <- as.numeric(sol$getValue(gvec))
+    g_org <- g_sc / score_loss_input$scale_vec
+    # Back-transform vector representation of g to Matrix G
+    G_org <- matrix(g_org, nrow = m, ncol = m)
+    
+    # Save solution in variables
+    c1_org <- as.numeric(sol$getValue(c1))
+    optimizer <- NULL
+    status <- sol$status
+    solution <- sol
+  }
   
-  # Specify CVXR problem
-  prob <- Problem(Minimize(obj))
-  
-  # Solve CVXR problem using provided solver settings
-  sol <- solve(
-    prob,
-    solver = solver,
-    max_iters = scs_control$max_iters,
-    eps = scs_control$eps,
-    alpha = scs_control$alpha,
-    verbose = scs_control$verbose
-  )
-  
-  # Back-transform column scaled solution for g_vec
-  g_sc  <- as.numeric(sol$getValue(gvec))
-  g_org <- g_sc / score_loss_input$scale_vec
-  # Back-transform vector representation of g to Matrix G
-  G_org <- matrix(g_org, nrow = m, ncol = m)
+  # Direct non-convex optimization without PSD
+  if (parameterization == "lambda_mu") {
+    # We optimize still over the efficient K, l representation and need to compute
+    # all variables to use this representation. Thus we employ still a vectorized
+    # matrix G but restricted to the direct SOS represntation of lambda, mu
+    
+    # size of g
+    p <- m * m
+    # Get l from build_K_and_l_univariate()
+    l_vec <- score_loss_input$l
+    
+    # helper function to derive vectorized G based on a vector theta which encodes (lambda, mu, c1)
+    # g is vector to optimize
+    theta_to_y <- function(theta) {
+      lambda <- theta[1:m]
+      mu     <- theta[(m + 1):(2 * m)]
+      c1     <- theta[2 * m + 1]
+      
+      G_sc <- tcrossprod(lambda) + tcrossprod(mu)
+      c(as.vector(G_sc), c1)
+    }
+    
+    # Create objective based on vectorized G that is constructed out of (lambda, mu, c1)
+    objective <- function(theta) {
+      y <- theta_to_y(theta)
+      as.numeric(0.5 * crossprod(y, K_reg %*% y) - sum(l_vec * y))
+    }
+    
+    # Derive gradient to improve efficiency of BFGS method
+    gradient <- function(theta) {
+      lambda <- theta[1:m]
+      mu     <- theta[(m + 1):(2 * m)]
+      
+      y <- theta_to_y(theta)
+      # Gradient of objective function to y
+      q <- as.numeric(K_reg %*% y - l_vec)
+      
+      QG <- matrix(q[1:p], nrow = m, ncol = m)
+      qc <- q[p + 1]
+      
+      # Chain rule: Gradient of objective according to (lambda, mu, c1)
+      grad_lambda <- as.numeric((QG + t(QG)) %*% lambda)
+      grad_mu     <- as.numeric((QG + t(QG)) %*% mu)
+      
+      c(grad_lambda, grad_mu, qc)
+    }
+    
+    # Use 10 different starting points
+    # n_starts <- 10
+    # Draw them from normal distribution with sd=0.1
+    # init_sd <- 0.1
+    n_starts <- as.integer(lambda_mu_n_starts)
+    init_sd <- lambda_mu_init_sd
+
+    # Check if seed should be applied to transparence
+    if (!is.null(lambda_mu_seed)) {
+      # Check if there already exists a seed an save this status else set old_seed = NULL
+      old_seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+      old_seed <- if (old_seed_exists) get(".Random.seed", envir = .GlobalEnv) else NULL
+      
+      # If the function fit_score_matching_univariate is left, we set the seed to the old stats
+      on.exit({
+        if (old_seed_exists) {
+          assign(".Random.seed", old_seed, envir = .GlobalEnv)
+        } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+          # remove generated seed if no old seed had existed before
+          rm(".Random.seed", envir = .GlobalEnv)
+        }
+      }, add = TRUE)
+      # To generate the starting points we use the following seed
+      set.seed(lambda_mu_seed)
+    }
+    
+    # Generate list of 10 starting points
+    start_list <- lapply(seq_len(n_starts), function(s) {
+      rnorm(2 * m + 1, sd = init_sd)
+    })
+    
+    # iterate through starting points to derive best solution with BFGS
+    best_opt <- NULL
+    for (theta0 in start_list) {
+      opt <- optim(
+        par = theta0,
+        fn = objective,
+        gr = gradient,
+        method = "BFGS",
+        control = optim_control
+      )
+      # Save solution if it's the first run or objective value is smaller
+      if (is.null(best_opt) || opt$value < best_opt$value) {
+        best_opt <- opt
+      }
+    }
+    
+    # Build G and c1 from the derived estimation of (lambda, mu, c1)
+    theta_hat <- best_opt$par
+    lambda_hat_sc <- theta_hat[1:m]
+    mu_hat_sc     <- theta_hat[(m + 1):(2 * m)]
+    c1_org        <- theta_hat[2 * m + 1]
+    G_sc  <- tcrossprod(lambda_hat_sc) + tcrossprod(mu_hat_sc)
+    g_org <- as.vector(G_sc) / score_loss_input$scale_vec
+    G_org <- matrix(g_org, nrow = m, ncol = m)
+    
+    sol <- list(value = best_opt$value)
+    optimizer <- best_opt
+    
+    # Check if BFGS converged
+    status <- if (best_opt$convergence == 0) {
+      if (parameterization == "psd_init_lambda_mu") {
+        "BFGS_psd_init_converged"
+      } else {
+        "BFGS_converged"
+      }
+    } else {
+      if (parameterization == "psd_init_lambda_mu") {
+        "BFGS_psd_init_not_converged"
+      } else {
+        "BFGS_not_converged"
+      }
+    }
+    
+    solution <- sol
+  }
   
   structure(
     list(
       G = G_org,
-      c1 = as.numeric(sol$getValue(c1)),
-      status = sol$status,
-      solution = sol,
-      scaling = list(
-        center = sc$center,
-        scale = sc$scale,
-        standardize = standardize
-      ),
-      column_scaling = list(
-        scale_vec = score_loss_input$scale_vec
-      ),
+      c1 = c1_org,
+      status = status,
+      solution = solution,
+      optimizer = optimizer,
+      parameterization = parameterization,
+      scaling = list(center = sc$center, scale = sc$scale, standardize = standardize),
+      column_scaling = list(scale_vec = score_loss_input$scale_vec),
       ridge = ridge,
       diagnostics = list(
         kappa_raw = kappa_raw,
